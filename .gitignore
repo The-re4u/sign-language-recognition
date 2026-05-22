@@ -11,10 +11,8 @@ data/
 __pycache__/
 *.pyc
 
-# Docs (binary, large)
-docs/*.docx
-docs/*.pdf
-docs/figures/
+# Docs
+docs/
 
 # Screenshots
 *.png
