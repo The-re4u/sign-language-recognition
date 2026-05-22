@@ -1,0 +1,1 @@
+# Core module for sign language recognition system v2.0

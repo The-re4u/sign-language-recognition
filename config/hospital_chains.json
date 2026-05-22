@@ -1,0 +1,298 @@
+{
+  "categories": {
+    "emergency": {"priority": 0, "description": "紧急求助"},
+    "medical": {"priority": 1, "description": "医疗需求"},
+    "pain": {"priority": 2, "description": "疼痛表达"},
+    "emotion": {"priority": 3, "description": "情感表达"},
+    "greeting": {"priority": 4, "description": "问候语"},
+    "request": {"priority": 5, "description": "基本请求"},
+    "control": {"priority": 6, "description": "系统控制"},
+    "common": {"priority": 7, "description": "日常用语"}
+  },
+  "chains": {
+    "救命": {
+      "sequence": ["Open_Palm", "Open_Palm", "Open_Palm"],
+      "variants": [["救命"], ["SOS"], ["紧急求助"]],
+      "category": "emergency"
+    },
+    "呼吸困难": {
+      "sequence": ["Open_Palm", "Open_Palm", "Closed_Fist", "Closed_Fist"],
+      "variants": [["喘不过气"], ["呼吸不了"]],
+      "category": "emergency"
+    },
+    "我疼": {
+      "sequence": ["Closed_Fist", "One"],
+      "variants": [["疼"], ["痛"]],
+      "category": "pain"
+    },
+    "很疼": {
+      "sequence": ["Closed_Fist", "Closed_Fist"],
+      "variants": [["非常疼"], ["好痛"]],
+      "category": "pain"
+    },
+    "不疼了": {
+      "sequence": ["Good", "Closed_Fist"],
+      "variants": [["不疼"], ["不痛了"]],
+      "category": "pain"
+    },
+    "头疼": {
+      "sequence": ["Closed_Fist", "One", "Open_Palm"],
+      "variants": [["头痛"], ["脑袋疼"]],
+      "category": "pain"
+    },
+    "肚子疼": {
+      "sequence": ["Closed_Fist", "Three", "Open_Palm"],
+      "variants": [["腹痛"], ["胃疼"]],
+      "category": "pain"
+    },
+    "胸口疼": {
+      "sequence": ["Closed_Fist", "Victory", "Open_Palm"],
+      "variants": [["胸痛"], ["心口疼"]],
+      "category": "pain"
+    },
+    "呼叫护士": {
+      "sequence": ["Open_Palm", "Open_Palm", "Good"],
+      "variants": [["叫护士"], ["护士来"]],
+      "category": "medical"
+    },
+    "需要医生": {
+      "sequence": ["Open_Palm", "Good", "One"],
+      "variants": [["找医生"], ["叫医生"]],
+      "category": "medical"
+    },
+    "吃药": {
+      "sequence": ["Good", "Three", "Closed_Fist"],
+      "variants": [["服药"], ["药时间"]],
+      "category": "medical"
+    },
+    "打针": {
+      "sequence": ["One", "Closed_Fist", "One"],
+      "variants": [["注射"], ["输液"]],
+      "category": "medical"
+    },
+    "睡不着": {
+      "sequence": ["Seven", "Open_Palm", "Closed_Fist"],
+      "variants": [["失眠"], ["睡不好"]],
+      "category": "medical"
+    },
+    "头晕": {
+      "sequence": ["Open_Palm", "Seven", "Open_Palm"],
+      "variants": [["眩晕"], ["晕"]],
+      "category": "medical"
+    },
+    "恶心": {
+      "sequence": ["Seven", "Good", "Seven"],
+      "variants": [["想吐"], ["反胃"]],
+      "category": "medical"
+    },
+    "发烧": {
+      "sequence": ["Open_Palm", "Good", "Seven"],
+      "variants": [["发热"], ["体温高"]],
+      "category": "medical"
+    },
+    "血压": {
+      "sequence": ["Open_Palm", "Victory", "Open_Palm"],
+      "variants": [["量血压"], ["测血压"]],
+      "category": "medical"
+    },
+    "想喝水": {
+      "sequence": ["Open_Palm", "Three", "Closed_Fist"],
+      "variants": [["喝水"], ["渴了"]],
+      "category": "request"
+    },
+    "想吃饭": {
+      "sequence": ["Open_Palm", "Closed_Fist", "Good"],
+      "variants": [["吃饭"], ["饿了"]],
+      "category": "request"
+    },
+    "上厕所": {
+      "sequence": ["Victory", "Closed_Fist", "Open_Palm"],
+      "variants": [["厕所"], ["卫生间"], ["小便"]],
+      "category": "request"
+    },
+    "翻身": {
+      "sequence": ["Open_Palm", "Closed_Fist", "Victory"],
+      "variants": [["转过来"], ["侧身"]],
+      "category": "request"
+    },
+    "冷": {
+      "sequence": ["Closed_Fist", "Seven"],
+      "variants": [["太冷了"], ["发抖"]],
+      "category": "request"
+    },
+    "热": {
+      "sequence": ["Open_Palm", "Good", "Seven"],
+      "variants": [["太热了"], ["出汗"]],
+      "category": "request"
+    },
+    "好多了": {
+      "sequence": ["Good", "Good", "Good"],
+      "variants": [["感觉好了"], ["舒服多了"]],
+      "category": "emotion"
+    },
+    "我爱你": {
+      "sequence": ["One", "Good", "Eight"],
+      "variants": [["One", "Good", "Victory"], ["One", "Open_Palm", "Eight"]],
+      "category": "emotion"
+    },
+    "谢谢": {
+      "sequence": ["Good"],
+      "variants": [["感谢"]],
+      "category": "emotion"
+    },
+    "对不起": {
+      "sequence": ["Seven", "Open_Palm", "Seven"],
+      "variants": [["抱歉"], ["不好意思"]],
+      "category": "emotion"
+    },
+    "加油": {
+      "sequence": ["Closed_Fist", "Good", "Closed_Fist"],
+      "variants": [["努力"], ["坚持"]],
+      "category": "emotion"
+    },
+    "辛苦了": {
+      "sequence": ["Good", "Closed_Fist", "Good"],
+      "variants": [["劳驾"], ["受累了"]],
+      "category": "emotion"
+    },
+    "开心每一天": {
+      "sequence": ["Open_Palm", "Victory", "Good", "Open_Palm"],
+      "variants": [["开心"], ["快乐"]],
+      "category": "emotion"
+    },
+    "我很好": {
+      "sequence": ["One", "Good", "Good"],
+      "variants": [["很好"], ["挺好"]],
+      "category": "emotion"
+    },
+    "非常好": {
+      "sequence": ["Victory", "Good", "Good"],
+      "variants": [["很好"], ["非常好"], ["太棒了"]],
+      "category": "emotion"
+    },
+    "你很棒": {
+      "sequence": ["Victory", "Good", "One"],
+      "variants": [["很棒"], ["厉害"]],
+      "category": "emotion"
+    },
+    "生日快乐": {
+      "sequence": ["Victory", "Victory", "Eight"],
+      "variants": [["生日快乐"], ["生日"]],
+      "category": "emotion"
+    },
+    "你好": {
+      "sequence": ["Open_Palm"],
+      "variants": [["您好"]],
+      "category": "greeting"
+    },
+    "再见": {
+      "sequence": ["Open_Palm", "Closed_Fist"],
+      "variants": [["拜拜"]],
+      "category": "greeting"
+    },
+    "早上好": {
+      "sequence": ["Open_Palm", "Open_Palm", "Good"],
+      "variants": [["早安"], ["早晨"]],
+      "category": "greeting"
+    },
+    "晚上好": {
+      "sequence": ["Closed_Fist", "Open_Palm", "Good"],
+      "variants": [["晚安"]],
+      "category": "greeting"
+    },
+    "欢迎光临": {
+      "sequence": ["Open_Palm", "Open_Palm", "Victory", "Open_Palm"],
+      "variants": [["欢迎"], ["欢迎光临"]],
+      "category": "greeting"
+    },
+    "再见拜拜": {
+      "sequence": ["Open_Palm", "Closed_Fist", "Victory"],
+      "variants": [["拜拜"], ["下次见"]],
+      "category": "greeting"
+    },
+    "好的": {
+      "sequence": ["Good"],
+      "variants": [["好"], ["OK"]],
+      "category": "common"
+    },
+    "不行": {
+      "sequence": ["Seven"],
+      "variants": [["不"], ["不好"]],
+      "category": "common"
+    },
+    "胜利": {
+      "sequence": ["Victory"],
+      "variants": [["耶"]],
+      "category": "emotion"
+    },
+    "蜘蛛侠": {
+      "sequence": ["Space"],
+      "variants": [],
+      "category": "emotion"
+    },
+    "帮助": {
+      "sequence": ["Open_Palm", "Open_Palm"],
+      "variants": [["帮忙"], ["求助"]],
+      "category": "emergency"
+    },
+    "需要喝水": {
+      "sequence": ["Three", "Closed_Fist"],
+      "variants": [["水"], ["喝水"]],
+      "category": "request"
+    },
+    "我想喝水": {
+      "sequence": ["One", "Open_Palm", "Three", "Closed_Fist"],
+      "variants": [["渴了"], ["想喝水"]],
+      "category": "request"
+    },
+    "开灯": {
+      "sequence": ["Open_Palm", "Good"],
+      "variants": [["灯"], ["开灯"]],
+      "category": "control"
+    },
+    "关灯": {
+      "sequence": ["Closed_Fist", "Good"],
+      "variants": [["关灯"]],
+      "category": "control"
+    },
+    "数字一": {"sequence": ["One"], "variants": [["一"], ["1"]], "category": "common"},
+    "数字二": {"sequence": ["Two"], "variants": [["二"], ["2"]], "category": "common"},
+    "数字三": {"sequence": ["Three"], "variants": [["三"], ["3"]], "category": "common"},
+    "数字四": {"sequence": ["Four"], "variants": [["四"], ["4"]], "category": "common"},
+    "数字五": {"sequence": ["Open_Palm"], "variants": [["五"], ["5"]], "category": "common"},
+    "数字六": {"sequence": ["Six"], "variants": [["六"], ["6"]], "category": "common"},
+    "数字七": {"sequence": ["Seven"], "variants": [["七"], ["7"]], "category": "common"},
+    "数字八": {"sequence": ["Eight"], "variants": [["八"], ["8"]], "category": "common"},
+    "数字九": {"sequence": ["Nine"], "variants": [["九"], ["9"]], "category": "common"},
+    "数字零": {"sequence": ["Closed_Fist"], "variants": [["零"], ["0"]], "category": "common"},
+    "一二三": {"sequence": ["One", "Two", "Three"], "variants": [["123"], ["一二三"]], "category": "common"},
+    "三四五": {"sequence": ["Three", "Four", "Open_Palm"], "variants": [["345"], ["三四五"]], "category": "common"},
+    "没问题": {"sequence": ["Good", "Victory", "Good"], "variants": [["没问题"], ["OK"]], "category": "common"},
+    "我不行": {"sequence": ["One", "Seven", "Seven"], "variants": [["不行"], ["做不到"]], "category": "common"},
+    "不知道": {"sequence": ["Closed_Fist", "Seven", "Open_Palm"], "variants": [["不知道"], ["不懂"]], "category": "common"},
+    "好好学习": {"sequence": ["Good", "Good", "Eight", "Good"], "variants": [["学习"], ["好好学习"]], "category": "common"}
+  },
+  "synonyms": {
+    "Seven": ["七", "7"],
+    "Nine": ["九", "9"],
+    "Closed_Fist": ["握拳", "拳头", "0", "零", "圈"],
+    "One": ["一", "1", "食指"],
+    "Two": ["二", "2"],
+    "Three": ["三", "3"],
+    "Four": ["四", "4"],
+    "Open_Palm": ["五", "5", "手掌", "张开"],
+    "Six": ["六", "6"],
+    "Eight": ["八", "8"],
+    "Victory": ["耶", "胜利", "V", "剪刀"],
+    "Space": ["蜘蛛侠", "摇滚"],
+    "Good": ["好", "OK", "可以", "赞", "拇指"],
+    "Seven": ["不好", "差", "踩", "拇指向下"],
+    "医生": ["大夫", "医师"],
+    "护士": ["护理", "护师"],
+    "疼": ["痛", "疼", "疼痛"],
+    "药": ["药物", "吃药", "服药"],
+    "水": ["喝水", "渴"],
+    "我": ["自己", "本人"],
+    "你": ["您", "对方"]
+  }
+}

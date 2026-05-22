@@ -1,0 +1,65 @@
+# Model configuration for sign language recognition system v2.0
+
+model:
+  name: "SignLanguageRecognizer"
+  version: "2.0"
+  num_classes: 14
+
+spatial_gcn:
+  input_channels: 3
+  hidden_dim: 128
+  out_features: 256
+
+visual_encoder:
+  in_channels: 3
+  roi_size: [96, 96]
+  out_features: 512
+  backbone: "mobilenet_v3_small"
+  freeze_backbone: true
+
+motion_encoder:
+  flow_bins: 16
+  flow_dim: 128
+  kp_dim: 63
+  out_features: 128
+
+multimodal_fusion:
+  d_model: 256
+  nhead: 8
+  num_layers: 2
+  dropout: 0.1
+
+slowfast_tcn:
+  input_dim: 256
+  slow_channels: [64, 128, 128]
+  fast_channels: [32, 32, 64, 64]
+  slow_kernel: 7
+  fast_kernel: 3
+  slow_dilations: [1, 2, 4]
+  fast_dilations: [1, 1, 2, 2]
+  num_classes: 14
+
+training:
+  batch_size: 16
+  learning_rate: 1e-4
+  warmup_epochs: 5
+  total_epochs: 100
+  weight_decay: 1e-4
+  # CE loss with temporal mean pooling (sequence → single label)
+  optimizer: "adamw"
+  scheduler: "cosine_annealing"
+  mixed_precision: true
+
+inference:
+  onnx_path: "models/sign_recognizer.onnx"
+  use_fp16: false
+  cpu_fallback: true
+
+perception:
+  window_size: 32
+  min_frames_for_inference: 16
+  roi_size: [96, 96]
+  roi_margin: 0.2
+  min_detection_confidence: 0.4
+  min_tracking_confidence: 0.35
+  num_hands: 2

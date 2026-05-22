@@ -1,0 +1,31 @@
+# Models & checkpoints (too large)
+models/checkpoints/
+*.pth
+
+# Data (868MB, too large)
+data/
+
+# IDE & tools
+.claude/
+.idea/
+__pycache__/
+*.pyc
+
+# Docs (binary, large)
+docs/*.docx
+docs/*.pdf
+docs/figures/
+
+# Screenshots
+*.png
+*.jpg
+*.jpeg
+
+# Environment
+.env
+venv/
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db

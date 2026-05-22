@@ -1,0 +1,11 @@
+numpy>=1.21
+mediapipe>=0.10.11
+opencv-python>=4.10
+fastapi>=0.110
+uvicorn>=0.27
+torch>=2.0
+torchvision>=0.15
+onnx>=1.14
+onnxruntime>=1.16
+requests>=2.31
+pyyaml>=6.0

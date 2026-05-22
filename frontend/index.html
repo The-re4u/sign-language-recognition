@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>手语实时识别系统 v3.2</title>
+<script src="https://unpkg.com/vue@3.5.13/dist/vue.global.prod.js"></script>
+<style>
+:root{--bg:#f5f7fa;--card:#fff;--text:#2c3e50;--sub:#7f8c8d;--pri:#2196F3;--success:#4CAF50;--warn:#FF9800;--danger:#f44336;--radius:12px;--shadow:0 2px 12px rgba(0,0,0,.08)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg) url(/assets/ui_imgs/bgs/bg.jpg) center/cover fixed;color:var(--text);font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+body::before{content:'';position:fixed;inset:0;background:rgba(245,247,250,.85);z-index:-1}
+#app{width:1200px;margin:16px auto;display:flex;flex-direction:column;gap:14px}
+.top-row{display:flex;gap:14px;align-items:stretch}
+.camera-panel{flex:0 0 640px;display:flex;flex-direction:column;gap:8px}
+.camera-wrap{position:relative;width:640px;height:480px;border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);background:#000 url(/assets/ui_imgs/bgs/bg.jpg) center/cover no-repeat}
+.camera-wrap video,.camera-wrap canvas{position:absolute;top:0;left:0;width:100%;height:100%}
+.camera-wrap canvas.off{display:none}
+.fps-badge{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);color:#0f0;padding:2px 8px;border-radius:4px;font:12px monospace;z-index:2}
+.ws-status{position:absolute;top:8px;right:8px;padding:2px 8px;border-radius:4px;font:11px monospace;z-index:2}
+.ws-status.on{background:rgba(76,175,80,.8);color:#fff}.ws-status.off{background:rgba(244,67,54,.8);color:#fff}
+.btn{padding:8px 20px;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600}
+.btn-start{background:var(--success);color:#fff}.btn-start:disabled{opacity:.5;cursor:not-allowed}
+.btn-stop{background:var(--danger);color:#fff}
+.btn-video{background:#607D8B;color:#fff;font-size:13px;padding:6px 14px}
+.btn-dl{color:#fff;font-size:13px;padding:6px 14px}.btn-dl:disabled{opacity:.4;cursor:not-allowed}
+.btn-work{color:#fff;font-size:13px;padding:6px 14px}.btn-work:disabled{opacity:.4;cursor:not-allowed}
+.sidebar{flex:1;display:flex;flex-direction:column;gap:14px}
+.card{background:var(--card);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow);display:flex;flex-direction:column}
+.card h3{font-size:12px;color:var(--sub);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;flex-shrink:0}
+.card.hands{flex:1.8}
+.card.semantic{flex:2.2}
+.card.tokens{flex:1;max-height:160px;overflow-y:auto}
+.card.conf{flex:0.8}
+.hands-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;flex:1}
+.hand-card{padding:10px;border-radius:8px;border:1px solid #eee;display:flex;flex-direction:column;justify-content:center}
+.hand-card .label{font-size:10px;color:var(--sub);margin-bottom:2px}
+.hand-card .gesture{font-size:18px;font-weight:700}
+.hand-card .detail{font-size:10px;color:var(--sub);margin-top:1px}
+.semantic-text{font-size:17px;font-weight:700;min-height:24px;flex:1;display:flex;align-items:center}
+.conf-bar{height:20px;border-radius:10px;background:#eee;overflow:hidden;margin:4px 0}
+.conf-fill{height:100%;border-radius:10px;transition:width .3s}
+.mode-badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:600}
+.mode-badge.number{background:#e3f2fd;color:#1565C0}
+.mode-badge.status{background:#f3e5f5;color:#7B1FA2}
+.mode-badge.time{background:#e8f5e9;color:#2E7D32}
+.status-bar{display:flex;align-items:center;gap:8px}
+.btn-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:2px 0;min-width:0}
+.btn-bar>*{flex-shrink:0}
+.btn-bar-spacer{width:8px}
+.state-label{font-size:12px;color:var(--sub);white-space:nowrap}
+.info-tag{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
+.bottom-row{display:flex;gap:14px;min-height:0}
+.triage-panel{flex:1;min-height:0;max-height:260px}
+.triage-scroll{flex:1;overflow-y:auto;min-height:0}
+.history-panel{flex:1;background:var(--card);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow);max-height:260px;overflow-y:auto;min-height:0}
+.history-panel.full{flex:2}
+.history-panel h3{font-size:14px;color:var(--sub);margin-bottom:12px;font-weight:600}
+.history-table{width:100%;border-collapse:collapse}
+.history-table th{text-align:left;font-size:11px;color:var(--sub);padding:8px 12px;border-bottom:2px solid #e0e0e0;background:#fafafa;position:sticky;top:0;z-index:1}
+.history-table th:first-child{width:70px}.history-table th:nth-child(2){width:280px}
+.history-table td{padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:13px;vertical-align:top}
+.history-table tr:hover{background:#f8f9ff}
+.ht-time{color:var(--sub);font-size:11px;white-space:nowrap}
+.ht-raw{color:#888;font-size:12px;word-break:break-all;line-height:1.5}
+.ht-output{color:var(--pri);font-weight:600;font-size:14px;line-height:1.5}
+.history-empty{text-align:center;color:var(--sub);padding:40px;font-size:14px}
+.semantic-text.processing{animation:pulse .8s ease-in-out infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="top-row">
+    <div class="camera-panel">
+      <div class="camera-wrap">
+        <video ref="video" autoplay playsinline muted v-show="cameraOn && !videoMode"></video>
+        <video ref="videoFile" muted playsinline v-show="videoMode" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover"></video>
+        <canvas ref="canvas" v-show="cameraOn || videoMode"></canvas>
+        <div class="fps-badge">FPS:{{ fps }} | det {{ detectMs }}ms | proc {{ procMs }}ms</div>
+        <div class="ws-status" :class="wsConnected?'on':'off'">{{ wsConnected ? 'WS通' : 'WS断' }}</div>
+      </div>
+      <div class="btn-bar">
+        <button class="btn btn-start" @click="toggleCamera" :disabled="videoMode">{{ cameraOn ? '关闭摄像头' : '打开摄像头' }}</button>
+        <span class="mode-badge" :class="modeClass">{{ modeName }}</span>
+        <span class="state-label">状态: {{ recorderState }}</span>
+        <span class="btn-bar-spacer"></span>
+        <button class="btn btn-video" @click="toggleVideoMode" :style="{background: videoMode ? 'var(--warn)' : '#607D8B'}">{{ videoMode ? '退出视频' : '上传视频' }}</button>
+        <button class="btn btn-dl" @click="toggleDL" :disabled="!wsConnected" :style="{background: useDL ? '#4CAF50' : '#9E9E9E'}">{{ useDL ? 'DL' : '规则' }}</button>
+        <button class="btn btn-work" @click="toggleWorkMode" :disabled="!wsConnected" :style="{background: workMode==='triage' ? '#FF6F00' : '#5C6BC0'}">{{ workMode==='triage' ? '导诊' : '翻译' }}</button>
+        <button class="btn btn-dl" @click="swapHands" :disabled="!wsConnected" :style="{background: swapHandsOn ? '#FF9800' : '#795548'}">{{ swapHandsOn ? '右手' : '左手' }}</button>
+        <button class="btn btn-work" @click="manualEnd" :disabled="!wsConnected || recorderState!=='RECORDING'" style="background:var(--warn)">退出</button>
+        <input ref="fileInput" type="file" accept="video/*" style="display:none" @change="onVideoSelect" />
+        <span v-if="videoMode && videoLoaded" class="info-tag">{{ videoFileName }} {{ videoProgress }}</span>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="card hands"><h3>手势识别</h3>
+        <div class="hands-grid">
+          <div class="hand-card" v-for="h in hands" :key="h.label">
+            <div class="label">{{ h.label }}手</div><div class="gesture">{{ h.gesture }}</div>
+            <div class="detail">手指:{{ h.finger_count }} | {{ (h.gesture_confidence*100).toFixed(0) }}%</div>
+          </div>
+          <div class="hand-card" v-if="hands.length<2" style="opacity:.4"><div class="label">未检测到</div><div class="gesture">—</div></div>
+        </div>
+      </div>
+      <div class="card semantic"><h3>语义输出</h3>
+        <div style="font-size:15px;min-height:24px;word-break:break-all;font-weight:600"
+             :style="{color: recorderState==='IDLE'?'var(--pri)':(semanticTokens.length?'var(--warn)':'var(--sub)')}">
+          <span v-if="semanticTokens.length">{{ semanticTokens.join(' - ') }}</span>
+          <span v-else-if="recorderState==='IDLE'">&#x1F91D; 双手张开开始录制</span>
+          <span v-else>&#x23F3; 等待手势输入...</span>
+        </div>
+      </div>
+      <div class="card tokens"><h3>操作记录</h3>
+        <div style="font-size:12px;line-height:1.8" ref="opLogEl">
+          <div v-for="(op,i) in opLog" :key="i" :style="{color: op.type==='start'?'var(--pri)':op.type==='end'?'var(--success)':op.type==='undo'?'var(--danger)':op.type==='sep'?'#607D8B':'var(--sub)'}">
+            {{ op.text }}
+          </div>
+          <div v-if="!opLog.length" style="color:var(--sub)">等待操作...</div>
+        </div>
+      </div>
+      <div class="card conf"><h3>置信度</h3>
+        <div class="conf-bar"><div class="conf-fill" :style="confStyle"></div></div>
+        <div style="font-size:11px;color:var(--sub)">轨迹稳定性 {{ confidence }}%</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-row">
+    <div class="card triage-panel" v-if="workMode==='triage' && triageConversation.length"><h3>AI 导诊对话</h3>
+      <div class="triage-scroll" ref="triageCard">
+        <div v-for="(m,i) in triageConversation" :key="i" style="font-size:12px;margin:4px 0;padding:6px 8px;border-radius:6px"
+             :style="{background: m.role==='assistant'?'#e3f2fd':'#f5f5f5',color: m.role==='assistant'?'#1565C0':'#333'}">
+          <span style="font-weight:600">{{ m.role==='assistant' ? 'AI导诊' : '患者' }}：</span>{{ m.content }}
+        </div>
+        <div v-if="triageRecommend" style="font-size:13px;margin-top:6px;padding:8px;border-radius:6px;background:#e8f5e9;color:#2E7D32;font-weight:600">
+          推荐科室：{{ triageRecommend }}
+        </div>
+      </div>
+    </div>
+    <div class="history-panel" :class="{full: workMode!=='triage' || !triageConversation.length}" ref="historyEl"><h3>识别历史</h3>
+      <table class="history-table" v-if="history.length"><thead><tr><th>时间</th><th>原始 Token</th><th>DeepSeek 输出</th></tr></thead>
+        <tbody><tr v-for="(h,i) in history" :key="i"><td class="ht-time">{{ h.time }}</td><td class="ht-raw">{{ h.raw }}</td><td class="ht-output">{{ h.text }}</td></tr></tbody>
+      </table>
+      <div class="history-empty" v-else>等待识别手势...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const { createApp, ref, computed, onUnmounted } = Vue
+createApp({ setup() {
+  const video = ref(null), videoFile = ref(null), canvas = ref(null), fileInput = ref(null), triageCard = ref(null), opLogEl = ref(null), historyEl = ref(null)
+  const cameraOn = ref(false), wsConnected = ref(false)
+  const videoMode = ref(false), videoLoaded = ref(false), videoProgress = ref(''), videoFileName = ref('')
+  const useDL = ref(false), dlGesture = ref(''), dlConfidence = ref(0), swapHandsOn = ref(false)
+  const rawTokens = ref([])
+  const semanticTokens = ref([]), opLog = ref([])
+  const workMode = ref('translate'), triageConversation = ref([]), triageRecommend = ref('')
+  const fps = ref(0), detectMs = ref(0), procMs = ref(0), confidence = ref(0)
+  const hands = ref([])
+  const recorderState = ref('IDLE'), modeName = ref('基础')
+  const history = ref([])
+  let ws = null, stream = null, loopFrame = 0, wsRecon = 0, _lastSend = 0, _lastDraw = 0
+  let _reopenDebounce = 0  // v3.2: prevent rapid open/close cycles
+  let _lastAction = null, _lastOpText = ''  // dedup opLog pushes
+
+  const modeClass = computed(() => ({'数字':'number','身体部位':'body','医院操作':'hospital','病症':'symptom','程度状态':'status','时间频次':'time'}[modeName.value]||''))
+  const confStyle = computed(() => ({ width:confidence.value+'%', background:confidence.value>60?'var(--success)':confidence.value>30?'var(--warn)':'var(--danger)' }))
+
+  function scrollBottom(el) { if (el) setTimeout(() => { el.scrollTop = el.scrollHeight }, 50) }
+  function pushOp(text, type) {
+    if (_lastOpText !== text) { opLog.value.push({text, type}); _lastOpText = text; if (opLog.value.length > 50) opLog.value = opLog.value.slice(-30) }
+    scrollBottom(opLogEl.value)
+  }
+  function addHistory(raw, text) {
+    history.value.push({ time:new Date().toLocaleTimeString(), raw:raw||'', text });
+    if (history.value.length > 100) history.value.shift()
+    scrollBottom(historyEl.value)
+  }
+
+  function toggleVideoMode() {
+    if (videoMode.value) { stopVideo(); return }
+    fileInput.value.click()
+  }
+  function toggleDL() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    useDL.value = !useDL.value
+    ws.send(JSON.stringify({ action: 'toggle_dl' }))
+    dlGesture.value = ''; dlConfidence.value = 0
+  }
+  function swapHands() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    swapHandsOn.value = !swapHandsOn.value
+    ws.send(JSON.stringify({ action: 'swap_hands' }))
+  }
+  function manualEnd() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    ws.send(JSON.stringify({ action: 'force_end' }))
+  }
+  function toggleWorkMode() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    const next = workMode.value === 'translate' ? 'triage' : 'translate'
+    workMode.value = next
+    ws.send(JSON.stringify({ action: 'set_work_mode', work_mode: next }))
+    triageConversation.value = []; triageRecommend.value = ''
+  }
+  function onVideoSelect(e) {
+    const file = e.target.files[0]; if (!file) return
+    if (cameraOn.value) stopCamera()
+    videoFileName.value = file.name
+    const url = URL.createObjectURL(file)
+    videoFile.value.src = url
+    videoFile.value.onloadedmetadata = async () => {
+      videoLoaded.value = true; videoMode.value = true
+      _lastSend = _lastDraw = 0
+      await connectWS()
+      videoFile.value.play()
+      mainLoop()
+    }
+    videoFile.value.onended = () => {
+      videoProgress.value = '播放完毕'
+      stopVideo()
+    }
+  }
+  function stopVideo() {
+    if (videoFile.value) { videoFile.value.pause(); videoFile.value.src = '' }
+    videoMode.value = false; videoLoaded.value = false; videoProgress.value = ''; videoFileName.value = ''
+    wsConnected.value = false; clearTimeout(wsRecon)
+    if (ws) { ws.close(); ws = null }
+    if (loopFrame) { cancelAnimationFrame(loopFrame); loopFrame = 0 }
+  }
+
+  async function toggleCamera() {
+    if (cameraOn.value) { stopCamera(); return }
+    // v3.2: Debounce rapid open/close (500ms)
+    if (Date.now() - _reopenDebounce < 500) return
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video:{width:640,height:480}, audio:false })
+      video.value.srcObject = stream; await video.value.play()
+      cameraOn.value = true
+      _lastSend = _lastDraw = 0
+      // Reuse existing WS if still connected, else create new one
+      if (!ws || ws.readyState !== WebSocket.OPEN) await connectWS()
+      mainLoop()
+    } catch(e) { alert('摄像头失败: '+e.message); stopCamera() }
+  }
+
+  function stopCamera() {
+    _reopenDebounce = Date.now()
+    cameraOn.value = false; clearTimeout(wsRecon)
+    if (stream) { stream.getTracks().forEach(t=>t.stop()); stream = null }
+    if (loopFrame) { cancelAnimationFrame(loopFrame); loopFrame = 0 }
+    // Keep WebSocket alive — re-opening camera resumes the same session
+  }
+
+  function connectWS() {
+    return new Promise((resolve, reject) => {
+      if (ws) { ws.close(); ws = null }
+      ws = new WebSocket(`ws://${location.hostname}:8000/ws`); ws.binaryType = 'arraybuffer'
+      ws.onopen = () => { wsConnected.value = true; resolve() }
+      ws.onclose = () => { wsConnected.value = false; if (cameraOn.value || videoMode.value) wsRecon = setTimeout(() => { connectWS().catch(() => {}) }, 2000) }
+      ws.onerror = () => { reject(new Error('WS connection failed')) }
+      ws.onmessage = (e) => {
+        try {
+          const d = JSON.parse(e.data)
+          // Mode change confirmations
+          if (d.mode_changed) { useDL.value = d.use_dl; return }
+          if (d.work_mode_changed) { workMode.value = d.work_mode; return }
+          // DeepSeek polish update (async, arrives after initial output)
+          if (d.polish) {
+            semanticTokens.value = [d.polish]
+            // Update last history entry with polished text
+            if (history.value.length > 0) history.value[history.value.length - 1].text = d.polish
+            pushOp('DeepSeek 润色 → ' + d.polish, 'polish')
+            return
+          }
+          // Triage response
+          if (d.triage) {
+            if (d.triage_history) triageConversation.value = d.triage_history.map(h => ({role: h.role, content: h.content}))
+            if (d.triage.stage === 'recommend') triageRecommend.value = d.triage.department || d.triage.message
+            // Auto-scroll to latest message
+            setTimeout(() => { const el = triageCard.value; if (el) el.scrollTop = el.scrollHeight }, 50)
+            return
+          }
+          // Frame result
+          fps.value = d.fps||0; detectMs.value = d.detect_ms||0; procMs.value = d.proc_ms||0
+          hands.value = d.hands||[]; confidence.value = d.confidence||0
+          recorderState.value = d.semantic?.state||'IDLE'; modeName.value = d.semantic?.mode||'基础'
+          useDL.value = d.use_dl||false
+          dlGesture.value = d.dl_gesture||''; dlConfidence.value = d.dl_confidence||0
+          const s = d.semantic; if (!s) return
+          // Dedup: only react when action changes (prevents replay from cached frames)
+          if (s.action && s.action !== _lastAction) {
+            if (s.action==='start') { semanticTokens.value=[]; _lastOpText=''; pushOp('开始录制', 'start'); triageRecommend.value='' }
+            else if (s.action==='output') { semanticTokens.value=[s.text]; addHistory((s.raw||[]).join('-'), s.text); pushOp('结束输入 → '+s.text, 'end') }
+            else if (s.action==='undo_word') { semanticTokens.value=[... (s.raw||[]) ]; pushOp('撤销词', 'undo') }
+            else if (s.action==='undo_sentence') { semanticTokens.value=[]; pushOp('撤销整句', 'undo') }
+            else if (s.action==='separator') { semanticTokens.value=[...semanticTokens.value, ',']; pushOp('分隔符', 'sep') }
+          }
+          if (s.action==='buffer') { semanticTokens.value=[... (s.raw||[]) ] }
+          _lastAction = s.action
+          // Both fists → ending
+          if (recorderState.value==='RECORDING' && hands.value.length>=2 && hands.value.every(h=>h.gesture==='Closed_Fist')) {
+            pushOp('正在识别...', 'end')
+          }
+        } catch(ex) {}
+      }
+      // Timeout after 5s
+      setTimeout(() => { if (!wsConnected.value) reject(new Error('WS timeout')) }, 5000)
+    })
+  }
+
+  const CONNS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]]
+
+  // Reusable offscreen canvas — avoid per-frame createElement (memory leak fix)
+  const _sendCanvas = document.createElement('canvas'); _sendCanvas.width = 320; _sendCanvas.height = 240
+  const _sendCtx = _sendCanvas.getContext('2d')
+  let _sendBusy = false
+
+  // Single rAF loop: send (25fps) + draw (30fps)
+  function mainLoop(ts) {
+    if (!cameraOn.value && !videoMode.value) return
+    loopFrame = requestAnimationFrame(mainLoop)
+
+    const srcVideo = videoMode.value ? videoFile.value : video.value
+
+    // Update progress for video mode
+    if (videoMode.value && srcVideo && srcVideo.duration) {
+      const pct = Math.round(srcVideo.currentTime / srcVideo.duration * 100)
+      videoProgress.value = pct + '%'
+    }
+
+    // Send frame (25fps target) — reuse offscreen canvas, skip if previous send pending
+    if (ts - _lastSend >= 40 && ws && ws.readyState === WebSocket.OPEN && !_sendBusy) {
+      _lastSend = ts
+      if (srcVideo && srcVideo.readyState >= 2 && !srcVideo.paused) {
+        _sendCtx.drawImage(srcVideo, 0, 0, 320, 240)
+        _sendBusy = true
+        _sendCanvas.toBlob(b => {
+          _sendBusy = false
+          if (b && ws && ws.readyState === WebSocket.OPEN) b.arrayBuffer().then(buf => ws.send(buf))
+        }, 'image/jpeg', 0.4)
+      }
+    }
+
+    // Draw landmarks (30fps target) — avoid unnecessary canvas resize
+    if (ts - _lastDraw >= 33) {
+      _lastDraw = ts
+      const c = canvas.value; if (!c) return
+      const ctx = c.getContext('2d')
+      if (c.width !== 640) c.width = 640; if (c.height !== 480) c.height = 480
+      ctx.clearRect(0, 0, 640, 480)
+      hands.value.forEach(h => {
+        const lm = h.landmarks; if (!lm || !lm.length) return
+        const clr = h.label === 'Left' ? '#2196F3' : '#4CAF50'
+        ctx.strokeStyle = clr; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath()
+        CONNS.forEach(([a, b]) => { ctx.moveTo(lm[a][0] * 640, lm[a][1] * 480); ctx.lineTo(lm[b][0] * 640, lm[b][1] * 480) })
+        ctx.stroke()
+        ctx.fillStyle = h.label === 'Left' ? '#1976D2' : '#388E3C'
+        lm.forEach(([x, y]) => { ctx.beginPath(); ctx.arc(x * 640, y * 480, 5, 0, 2 * Math.PI); ctx.fill() })
+        if (h.bbox && h.bbox.length === 4) { const [x1, y1, x2, y2] = h.bbox; ctx.strokeStyle = '#0f0'; ctx.lineWidth = 2; ctx.strokeRect(x1 * 2, y1 * 2, (x2 - x1) * 2, (y2 - y1) * 2) }
+        const isL = h.label === 'Left', lx = isL ? 4 : 496
+        ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(lx, 452, 140, 24)
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 14px sans-serif'
+        ctx.textAlign = isL ? 'left' : 'right'; ctx.fillText((h.label || '') + ': ' + (h.gesture || ''), isL ? 10 : 630, 470)
+        ctx.textAlign = 'left'
+      })
+    }
+  }
+
+  onUnmounted(() => { stopCamera(); stopVideo() })
+  return { video, videoFile, canvas, fileInput, triageCard, opLogEl, historyEl, cameraOn, wsConnected, fps, detectMs, procMs, confidence, hands, semanticTokens, opLog, recorderState, modeName, modeClass, history, confStyle, videoMode, videoLoaded, videoProgress, videoFileName, useDL, dlGesture, dlConfidence, swapHandsOn, rawTokens, workMode, triageConversation, triageRecommend, toggleCamera, toggleVideoMode, toggleDL, toggleWorkMode, swapHands, onVideoSelect, manualEnd }
+}}).mount('#app')
+</script>
+</body>
+</html>

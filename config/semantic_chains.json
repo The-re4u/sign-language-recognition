@@ -1,0 +1,229 @@
+{
+  "categories": {
+    "emergency": {"priority": 0, "description": "紧急求助"},
+    "emotion": {"priority": 1, "description": "情感表达"},
+    "greeting": {"priority": 2, "description": "问候语"},
+    "request": {"priority": 3, "description": "请求"},
+    "control": {"priority": 4, "description": "系统控制"},
+    "common": {"priority": 5, "description": "日常用语"}
+  },
+  "chains": {
+    "我爱你": {
+      "sequence": ["One", "Good", "Eight"],
+      "variants": [["One", "Good", "Victory"], ["One", "Open_Palm", "Eight"]],
+      "category": "emotion"
+    },
+    "谢谢": {
+      "sequence": ["Good"],
+      "variants": [["谢谢"], ["感谢"]],
+      "category": "emotion"
+    },
+    "你好": {
+      "sequence": ["Open_Palm"],
+      "variants": [["你好"], ["您好"]],
+      "category": "greeting"
+    },
+    "再见": {
+      "sequence": ["Open_Palm", "Closed_Fist"],
+      "variants": [["再见"], ["拜拜"]],
+      "category": "greeting"
+    },
+    "好的": {
+      "sequence": ["Good"],
+      "variants": [["好"], ["好的"], ["OK"]],
+      "category": "common"
+    },
+    "不行": {
+      "sequence": ["Seven"],
+      "variants": [["不"], ["不行"], ["不好"]],
+      "category": "common"
+    },
+    "胜利": {
+      "sequence": ["Victory"],
+      "variants": [["耶"], ["Victory"]],
+      "category": "emotion"
+    },
+    "数字一": {
+      "sequence": ["One"],
+      "variants": [["一"], ["1"], ["One"]],
+      "category": "common"
+    },
+    "数字二": {
+      "sequence": ["Two"],
+      "variants": [["二"], ["2"], ["Two"]],
+      "category": "common"
+    },
+    "数字三": {
+      "sequence": ["Three"],
+      "variants": [["三"], ["3"], ["Three"]],
+      "category": "common"
+    },
+    "数字四": {
+      "sequence": ["Four"],
+      "variants": [["四"], ["4"], ["Four"]],
+      "category": "common"
+    },
+    "数字五": {
+      "sequence": ["Open_Palm"],
+      "variants": [["五"], ["5"], ["Open_Palm"]],
+      "category": "common"
+    },
+    "数字六": {
+      "sequence": ["Six"],
+      "variants": [["六"], ["6"], ["Six"]],
+      "category": "common"
+    },
+    "数字八": {
+      "sequence": ["Eight"],
+      "variants": [["八"], ["8"], ["Eight"]],
+      "category": "common"
+    },
+    "拳头": {
+      "sequence": ["Closed_Fist"],
+      "variants": [["握拳"], ["Closed_Fist"]],
+      "category": "common"
+    },
+    "蜘蛛侠": {
+      "sequence": ["Space"],
+      "variants": [["Space"]],
+      "category": "emotion"
+    },
+    "帮助": {
+      "sequence": ["Open_Palm", "Open_Palm"],
+      "variants": [["帮忙"], ["帮助"], ["求助"]],
+      "category": "emergency"
+    },
+    "需要喝水": {
+      "sequence": ["Three", "Closed_Fist"],
+      "variants": [["水"], ["喝水"]],
+      "category": "request"
+    },
+    "开灯": {
+      "sequence": ["Open_Palm", "Good"],
+      "variants": [["灯"], ["开灯"]],
+      "category": "control"
+    },
+    "关灯": {
+      "sequence": ["Closed_Fist", "Good"],
+      "variants": [["关灯"]],
+      "category": "control"
+    },
+    "救命": {
+      "sequence": ["Open_Palm", "Open_Palm", "Open_Palm"],
+      "variants": [["救命"], ["SOS"], ["紧急求助"]],
+      "category": "emergency"
+    },
+    "我很好": {
+      "sequence": ["One", "Good", "Good"],
+      "variants": [["很好"], ["我很好"], ["挺好"]],
+      "category": "emotion"
+    },
+    "非常好": {
+      "sequence": ["Victory", "Good", "Good"],
+      "variants": [["很好"], ["非常好"], ["太棒了"]],
+      "category": "emotion"
+    },
+    "你很棒": {
+      "sequence": ["Victory", "Good", "One"],
+      "variants": [["很棒"], ["你真棒"], ["厉害"]],
+      "category": "emotion"
+    },
+    "一二三": {
+      "sequence": ["One", "Two", "Three"],
+      "variants": [["123"], ["一二三"], ["数数"]],
+      "category": "common"
+    },
+    "三四五": {
+      "sequence": ["Three", "Four", "Open_Palm"],
+      "variants": [["345"], ["三四五"]],
+      "category": "common"
+    },
+    "早上好": {
+      "sequence": ["Open_Palm", "Open_Palm", "Good"],
+      "variants": [["早上好"], ["早安"], ["早晨"]],
+      "category": "greeting"
+    },
+    "晚上好": {
+      "sequence": ["Closed_Fist", "Open_Palm", "Good"],
+      "variants": [["晚上好"], ["晚安"]],
+      "category": "greeting"
+    },
+    "对不起": {
+      "sequence": ["Seven", "Open_Palm", "Seven"],
+      "variants": [["对不起"], ["抱歉"], ["不好意思"]],
+      "category": "emotion"
+    },
+    "没问题": {
+      "sequence": ["Good", "Victory", "Good"],
+      "variants": [["没问题"], ["OK"], ["好的没问题"]],
+      "category": "common"
+    },
+    "欢迎光临": {
+      "sequence": ["Open_Palm", "Open_Palm", "Victory", "Open_Palm"],
+      "variants": [["欢迎"], ["欢迎光临"]],
+      "category": "greeting"
+    },
+    "我想喝水": {
+      "sequence": ["One", "Open_Palm", "Three", "Closed_Fist"],
+      "variants": [["渴了"], ["喝水"], ["想喝水"]],
+      "category": "request"
+    },
+    "生日快乐": {
+      "sequence": ["Victory", "Victory", "Eight"],
+      "variants": [["生日快乐"], ["生日"]],
+      "category": "emotion"
+    },
+    "加油": {
+      "sequence": ["Closed_Fist", "Good", "Closed_Fist"],
+      "variants": [["加油"], ["努力"], ["坚持"]],
+      "category": "emotion"
+    },
+    "好好学习": {
+      "sequence": ["Good", "Good", "Eight", "Good"],
+      "variants": [["学习"], ["好好学习"], ["努力学"]],
+      "category": "common"
+    },
+    "再见拜拜": {
+      "sequence": ["Open_Palm", "Closed_Fist", "Victory"],
+      "variants": [["拜拜"], ["再见啦"], ["下次见"]],
+      "category": "greeting"
+    },
+    "我不行": {
+      "sequence": ["One", "Seven", "Seven"],
+      "variants": [["不行"], ["我不能"], ["做不到"]],
+      "category": "common"
+    },
+    "不知道": {
+      "sequence": ["Closed_Fist", "Seven", "Open_Palm"],
+      "variants": [["不知道"], ["不懂"], ["不明白"]],
+      "category": "common"
+    },
+    "辛苦了": {
+      "sequence": ["Good", "Closed_Fist", "Good"],
+      "variants": [["辛苦了"], ["劳驾"], ["麻烦"]],
+      "category": "emotion"
+    },
+    "开心每一天": {
+      "sequence": ["Open_Palm", "Victory", "Good", "Open_Palm"],
+      "variants": [["开心"], ["快乐"], ["高兴"]],
+      "category": "emotion"
+    }
+  },
+  "synonyms": {
+    "比心": ["爱心", "爱", "心", "love"],
+    "我": ["自己", "本人", "自我"],
+    "你": ["您", "对方"],
+    "Good": ["好", "好的", "OK", "可以", "赞"],
+    "Seven": ["不好", "不行", "不", "差"],
+    "Victory": ["耶", "胜利", "V"],
+    "Open_Palm": ["你好", "嗨", "手张开", "五"],
+    "Closed_Fist": ["握拳", "拳头", "0"],
+    "One": ["一", "1"],
+    "Two": ["二", "2"],
+    "Three": ["三", "3"],
+    "Four": ["四", "4"],
+    "Six": ["六", "6"],
+    "Eight": ["八", "8"],
+    "Space": ["蜘蛛侠"]
+  }
+}
