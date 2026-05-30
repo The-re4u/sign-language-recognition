@@ -77,19 +77,33 @@ class ONNXRecognizer:
             features: [T, 256] fused features
 
         Returns:
-            (label_id, confidence) or None
+            (label_id, avg_softmax_confidence) or None.
+            Confidence is the average softmax probability of the winning class
+            over confident frames (softmax > 0.3), range [0, 1].
         """
         result = self.predict(features, return_probs=True)
         if result is None:
             return None
-        class_ids, confidence = result
-        # Majority vote over non-low-confidence frames
-        confident_frames = class_ids[confidence > 0.3]
-        if len(confident_frames) == 0:
-            confident_frames = class_ids
+        frame_ids, frame_probs = result
+
+        # Filter to frames where the model is confident
+        confident_mask = frame_probs > 0.3
+        confident_ids = frame_ids[confident_mask]
+        confident_probs = frame_probs[confident_mask]
+
+        if len(confident_ids) == 0:
+            confident_ids = frame_ids
+            confident_probs = frame_probs
+
+        # Majority vote
         from collections import Counter
-        most_common = Counter(confident_frames.tolist()).most_common(1)[0]
-        return most_common[0], float(most_common[1]) / len(confident_frames)
+        winning_class, _count = Counter(confident_ids.tolist()).most_common(1)[0]
+
+        # Average softmax probability of the winning class over confident frames
+        winning_mask = (confident_ids == winning_class)
+        avg_confidence = float(confident_probs[winning_mask].mean())
+
+        return winning_class, avg_confidence
 
     @staticmethod
     def _softmax(x, axis=-1):

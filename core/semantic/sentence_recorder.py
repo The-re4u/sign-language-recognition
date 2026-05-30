@@ -1,21 +1,28 @@
 # coding:utf-8
 """
-Sentence-level gesture recorder v3.4 — hospital sign language input method.
+Sentence-level gesture recorder v5.2 — hospital sign language input method.
 
-Design principle: 7 mode gestures × 10 content gestures = 70 semantic slots.
-Some slots are reserved for control functions (separator, undo).
-  - Mode gestures {Good, Seven, Victory, Eight, Two, Pinky_Up, One}
-  - Content gestures {Closed_Fist, One, Two, Three, Four, Open_Palm, Six, Seven, Eight, Nine}
-  - One, Two, Seven, Eight serve dual roles (mode or content depending on context)
+Design principle: 7 mode gestures x 10 content gestures = 70 semantic slots.
+  - Mode gestures (left hand):  Seven(0), One(1), Two(2), Three(3), Four(4), Open_Palm(5), Six(6)
+  - Content gestures (right hand): Closed_Fist(0), One(1), ..., Nine(9) — all 10 digits
+  - One, Two, Three serve dual roles: mode and control trigger (both-hands same gesture)
+  - 数字层用 Seven(7) 而非 Closed_Fist(0)，避免双手 Closed_Fist 的结束歧义
 
-Control gestures use SYMMETRIC dual-gesture:
-  - 双手 Victory (持握0.5s)  → undo last word
-  - 双手 Seven (持握0.5s)    → undo sentence
-  - 双手 One (持握0.5s)      → separator
+Control gestures (both-hands symmetric, only active when matching the current mode):
+  - Mode=One(常用语)  + both-hands One   -> separator (insert ，)
+  - Mode=Two(病症)    + both-hands Two   -> undo last word
+  - Mode=Three(身体)  + both-hands Three -> undo sentence
+  - Mode=Open_Palm(程度) + both-hands Open_Palm -> handled by start/end
+
+Content slots relocated (same-gesture-as-mode slots freed for control):
+  - MAP_PHRASE:   ',' moved from One to Seven (replaced '再见')
+  - MAP_SYMPTOM:  '胸闷' moved from Two to Nine (replaced '呼吸困难')
+  - MAP_BODY:     '背' moved from Three to Seven (replaced '喉')
+  - MAP_STATUS:   '紧急' moved from Open_Palm to Nine (replaced '反复')
 
 START/END:
-  - START: both hands Open_Palm sustained 1.0s
-  - END:   both hands Closed_Fist sustained 1.5s, or transition Open→Fist
+  - START: both hands Open_Palm sustained 0.5s, or transition Closed_Fist->Open_Palm
+  - END:   both hands Closed_Fist sustained 1.5s, or transition Open_Palm->Closed_Fist
 """
 import time
 from collections import deque
@@ -24,23 +31,24 @@ from collections import deque
 class SentenceRecorder:
 
     # ================================================================
-    # Mode gestures (non-dominant hand)
+    # Mode gestures (left hand) — 7 modes mapped to CSL digits
     # ================================================================
-    MODE_NUMBER   = 'Good'         # 👍 → digit layer
-    MODE_BODY     = 'Seven'        # 🤟 → body part layer
-    MODE_HOSPITAL = 'Victory'      # ✌️ → hospital operations layer
-    MODE_SYMPTOM  = 'Eight'        # 👍👆 → symptom layer
-    MODE_STATUS   = 'Two'          # ✌️ → severity / status layer
-    MODE_TIME     = 'Pinky_Up'     # 🤙 → time / frequency layer
+    MODE_NUMBER   = 'Seven'         # 7 -> digit layer (NOT 0, avoids both-fist conflict)
+    MODE_PHRASE   = 'One'           # 1 -> common phrases
+    MODE_SYMPTOM  = 'Two'           # 2 -> symptom layer
+    MODE_BODY     = 'Three'         # 3 -> body part layer
+    MODE_HOSPITAL = 'Four'          # 4 -> hospital operations layer
+    MODE_STATUS   = 'Open_Palm'     # 5 -> severity / status layer
+    MODE_TIME     = 'Six'           # 6 -> time / frequency layer
 
-    MODE_GESTURES = {MODE_NUMBER, MODE_BODY, MODE_HOSPITAL, MODE_SYMPTOM,
-                     MODE_STATUS, MODE_TIME, 'One'}
+    MODE_GESTURES = {MODE_NUMBER, MODE_PHRASE, MODE_SYMPTOM, MODE_BODY,
+                     MODE_HOSPITAL, MODE_STATUS, MODE_TIME}
 
     MODE_NAMES = {
-        'Good': '数字', 'Seven': '身体部位',
-        'Victory': '医院操作', 'Eight': '病症',
-        'Two': '程度状态', 'Pinky_Up': '时间频次',
-        'One': '常用语',
+        'Seven': '数字', 'One': '常用语',
+        'Two': '病症', 'Three': '身体部位',
+        'Four': '医院操作', 'Open_Palm': '程度状态',
+        'Six': '时间频次',
     }
 
     # ================================================================
@@ -62,8 +70,8 @@ class SentenceRecorder:
     }
 
     MAP_BODY = {
-        'Closed_Fist': '头', 'One': '眼', 'Two': '耳', 'Three': '背', 'Four': '腿',
-        'Open_Palm': '手', 'Six': '脚', 'Seven': '喉', 'Eight': '胸', 'Nine': '胃',
+        'Closed_Fist': '头', 'One': '眼', 'Two': '耳', 'Three': None, 'Four': '腿',
+        'Open_Palm': '手', 'Six': '脚', 'Seven': '背', 'Eight': '胸', 'Nine': '胃',
     }
 
     MAP_HOSPITAL = {
@@ -72,13 +80,13 @@ class SentenceRecorder:
     }
 
     MAP_SYMPTOM = {
-        'Closed_Fist': '疼', 'One': '咳嗽', 'Two': '胸闷', 'Three': '食欲不振', 'Four': '腹泻',
-        'Open_Palm': '发烧', 'Six': '恶心', 'Seven': '头晕', 'Eight': '乏力', 'Nine': '呼吸困难',
+        'Closed_Fist': '疼', 'One': '咳嗽', 'Two': None, 'Three': '食欲不振', 'Four': '腹泻',
+        'Open_Palm': '发烧', 'Six': '恶心', 'Seven': '头晕', 'Eight': '乏力', 'Nine': '胸闷',
     }
 
     MAP_STATUS = {
         'Closed_Fist': '无', 'One': '轻微', 'Two': '中等', 'Three': '较重', 'Four': '严重',
-        'Open_Palm': '紧急', 'Six': '好转', 'Seven': '恶化', 'Eight': '稳定', 'Nine': '反复',
+        'Open_Palm': None, 'Six': '好转', 'Seven': '恶化', 'Eight': '稳定', 'Nine': '紧急',
     }
 
     MAP_TIME = {
@@ -88,7 +96,7 @@ class SentenceRecorder:
 
     MAP_PHRASE = {
         'Closed_Fist': '请帮帮我',
-        'One':        ',',
+        'One':        None,
         'Two':        '好的',
         'Three':      '谢谢',
         'Four':       '我想要',
@@ -100,24 +108,26 @@ class SentenceRecorder:
     }
 
     MODE_MAPS = {
-        'Good': MAP_NUMBER,
-        'Seven': MAP_BODY,
-        'Victory': MAP_HOSPITAL,
-        'Eight': MAP_SYMPTOM,
-        'Two': MAP_STATUS,
-        'Pinky_Up': MAP_TIME,
+        'Seven': MAP_NUMBER,
         'One': MAP_PHRASE,
+        'Two': MAP_SYMPTOM,
+        'Three': MAP_BODY,
+        'Four': MAP_HOSPITAL,
+        'Open_Palm': MAP_STATUS,
+        'Six': MAP_TIME,
     }
 
     # ================================================================
-    # Control: symmetric dual-gesture (both hands same mode gesture).
-    # Semantically safe because normal input always uses one mode hand
-    # + one content hand — two hands with the same mode gesture never
-    # occurs during valid semantic input.
+    # Control: symmetric dual-gesture (both hands same gesture).
+    # Only fires when the symmetric gesture matches the CURRENT MODE.
+    # This means control is mode-contextual: e.g. mode=Two + both-hands
+    # Two = undo, but mode=Seven + both-hands Two = normal input.
     # ================================================================
-    CTRL_UNDO_WORD     = frozenset({'Victory'})
-    CTRL_UNDO_SENTENCE = frozenset({'Seven'})
+    CTRL_UNDO_WORD     = frozenset({'Two'})
+    CTRL_UNDO_SENTENCE = frozenset({'Three'})
     CTRL_SEPARATOR     = frozenset({'One'})
+    # Only these gestures can trigger control (not all MODE_GESTURES)
+    CONTROL_CAPABLE = {'One', 'Two', 'Three'}
 
     # ================================================================
     # Transition filter
@@ -302,8 +312,9 @@ class SentenceRecorder:
 
         left_g, right_g = all_gestures[0], all_gestures[1]
 
-        # Both same gesture: suppress (dual-control or start/end transition)
-        if left_g == right_g:
+        # Same gesture: block only control-capable pairs (One/Two/Three).
+        # Four/Six/Seven same-pair is valid mode+content input (e.g. mode=Four/医院, content=Four/检查).
+        if left_g == right_g and left_g in self.CONTROL_CAPABLE:
             return (None, None)
 
         # Hardcoded: left=mode, right=content (or swapped via UI toggle)
@@ -349,8 +360,8 @@ class SentenceRecorder:
 
         pair = frozenset(all_gestures)
 
-        # Both gestures must be mode gestures (not content)
-        if not pair.issubset(self.MODE_GESTURES):
+        # Only One/Two/Three can trigger control (not all mode gestures)
+        if not pair.issubset(self.CONTROL_CAPABLE):
             self._ctrl_pair = None; return None
 
         # Must be symmetric — both hands doing the SAME gesture

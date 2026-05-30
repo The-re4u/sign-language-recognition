@@ -94,29 +94,23 @@ class SlowFastTCN(nn.Module):
 
     def forward(self, x):
         """x: [B, T, C] → logits: [B, T, num_classes]"""
-        # Convert to [B, C, T] for Conv1d
         x_t = x.transpose(1, 2)  # [B, C, T]
 
-        # Slow path
         slow = x_t
-        for i, block in enumerate(self.slow_path):
-            slow = block(slow)
-
-        # Fast path with lateral fusion into slow
         fast = x_t
-        for i, block in enumerate(self.fast_path):
-            fast = block(fast)
+
+        # Interleave slow/fast processing with lateral fusion at each stage
+        max_stages = max(len(self.slow_path), len(self.fast_path))
+        for i in range(max_stages):
+            if i < len(self.slow_path):
+                slow = self.slow_path[i](slow)
+            if i < len(self.fast_path):
+                fast = self.fast_path[i](fast)
             if i < len(self.fast_fusions):
                 lateral = self.fast_fusions[i](fast)
-                # Align time dimensions: fast may be longer if no pooling
                 if lateral.shape[2] != slow.shape[2]:
                     lateral = F.interpolate(lateral, size=slow.shape[2], mode='nearest')
+                slow = slow + lateral
 
-        # Combine: add the final fast-fused features to slow
-        slow = slow + F.interpolate(
-            self.fast_fusions[-1](fast) if len(self.fast_fusions) > 0 else fast,
-            size=slow.shape[2], mode='nearest')
-
-        # Output
         logits = self.output_proj(slow)  # [B, num_classes, T]
         return logits.transpose(1, 2)     # [B, T, num_classes]

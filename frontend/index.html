@@ -3,158 +3,701 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>手语实时识别系统 v3.2</title>
+<title>手语实时识别系统 v6.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/vue@3.5.13/dist/vue.global.prod.js"></script>
 <style>
-:root{--bg:#f5f7fa;--card:#fff;--text:#2c3e50;--sub:#7f8c8d;--pri:#2196F3;--success:#4CAF50;--warn:#FF9800;--danger:#f44336;--radius:12px;--shadow:0 2px 12px rgba(0,0,0,.08)}
-*{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg) url(/assets/ui_imgs/bgs/bg.jpg) center/cover fixed;color:var(--text);font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
-body::before{content:'';position:fixed;inset:0;background:rgba(245,247,250,.85);z-index:-1}
-#app{width:1200px;margin:16px auto;display:flex;flex-direction:column;gap:14px}
-.top-row{display:flex;gap:14px;align-items:stretch}
-.camera-panel{flex:0 0 640px;display:flex;flex-direction:column;gap:8px}
-.camera-wrap{position:relative;width:640px;height:480px;border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);background:#000 url(/assets/ui_imgs/bgs/bg.jpg) center/cover no-repeat}
-.camera-wrap video,.camera-wrap canvas{position:absolute;top:0;left:0;width:100%;height:100%}
-.camera-wrap canvas.off{display:none}
-.fps-badge{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);color:#0f0;padding:2px 8px;border-radius:4px;font:12px monospace;z-index:2}
-.ws-status{position:absolute;top:8px;right:8px;padding:2px 8px;border-radius:4px;font:11px monospace;z-index:2}
-.ws-status.on{background:rgba(76,175,80,.8);color:#fff}.ws-status.off{background:rgba(244,67,54,.8);color:#fff}
-.btn{padding:8px 20px;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600}
-.btn-start{background:var(--success);color:#fff}.btn-start:disabled{opacity:.5;cursor:not-allowed}
-.btn-stop{background:var(--danger);color:#fff}
-.btn-video{background:#607D8B;color:#fff;font-size:13px;padding:6px 14px}
-.btn-dl{color:#fff;font-size:13px;padding:6px 14px}.btn-dl:disabled{opacity:.4;cursor:not-allowed}
-.btn-work{color:#fff;font-size:13px;padding:6px 14px}.btn-work:disabled{opacity:.4;cursor:not-allowed}
-.sidebar{flex:1;display:flex;flex-direction:column;gap:14px}
-.card{background:var(--card);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow);display:flex;flex-direction:column}
-.card h3{font-size:12px;color:var(--sub);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;flex-shrink:0}
-.card.hands{flex:1.8}
-.card.semantic{flex:2.2}
-.card.tokens{flex:1;max-height:160px;overflow-y:auto}
-.card.conf{flex:0.8}
-.hands-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;flex:1}
-.hand-card{padding:10px;border-radius:8px;border:1px solid #eee;display:flex;flex-direction:column;justify-content:center}
-.hand-card .label{font-size:10px;color:var(--sub);margin-bottom:2px}
-.hand-card .gesture{font-size:18px;font-weight:700}
-.hand-card .detail{font-size:10px;color:var(--sub);margin-top:1px}
-.semantic-text{font-size:17px;font-weight:700;min-height:24px;flex:1;display:flex;align-items:center}
-.conf-bar{height:20px;border-radius:10px;background:#eee;overflow:hidden;margin:4px 0}
-.conf-fill{height:100%;border-radius:10px;transition:width .3s}
-.mode-badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:600}
-.mode-badge.number{background:#e3f2fd;color:#1565C0}
-.mode-badge.status{background:#f3e5f5;color:#7B1FA2}
-.mode-badge.time{background:#e8f5e9;color:#2E7D32}
-.status-bar{display:flex;align-items:center;gap:8px}
-.btn-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:2px 0;min-width:0}
-.btn-bar>*{flex-shrink:0}
-.btn-bar-spacer{width:8px}
-.state-label{font-size:12px;color:var(--sub);white-space:nowrap}
-.info-tag{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
-.bottom-row{display:flex;gap:14px;min-height:0}
-.triage-panel{flex:1;min-height:0;max-height:260px}
-.triage-scroll{flex:1;overflow-y:auto;min-height:0}
-.history-panel{flex:1;background:var(--card);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow);max-height:260px;overflow-y:auto;min-height:0}
-.history-panel.full{flex:2}
-.history-panel h3{font-size:14px;color:var(--sub);margin-bottom:12px;font-weight:600}
-.history-table{width:100%;border-collapse:collapse}
-.history-table th{text-align:left;font-size:11px;color:var(--sub);padding:8px 12px;border-bottom:2px solid #e0e0e0;background:#fafafa;position:sticky;top:0;z-index:1}
-.history-table th:first-child{width:70px}.history-table th:nth-child(2){width:280px}
-.history-table td{padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:13px;vertical-align:top}
-.history-table tr:hover{background:#f8f9ff}
-.ht-time{color:var(--sub);font-size:11px;white-space:nowrap}
-.ht-raw{color:#888;font-size:12px;word-break:break-all;line-height:1.5}
-.ht-output{color:var(--pri);font-weight:600;font-size:14px;line-height:1.5}
-.history-empty{text-align:center;color:var(--sub);padding:40px;font-size:14px}
-.semantic-text.processing{animation:pulse .8s ease-in-out infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+/* ── Design System ── */
+:root {
+  --bg-overlay: rgba(255,255,255,0.82);
+  --bg-card: rgba(255,255,255,0.90);
+  --bg-surface: #f6f7fa;
+  --bg-elevated: #edeff4;
+  --border-dim: rgba(0,0,0,0.05);
+  --border-subtle: rgba(0,0,0,0.08);
+  --border-active: rgba(62,140,130,0.3);
+  --text-body: #3a3d45;
+  --text-dim: #90949e;
+  --text-bright: #1a1d25;
+  --text-heading: #9a9ea8;
+  --accent: #3e8c82;
+  --accent-glow: rgba(62,140,130,0.12);
+  --accent-strong: #2d6b63;
+  --teal: #3e8c82;
+  --green: #4a9d5a;
+  --orange: #c87d30;
+  --red: #c05048;
+  --blue: #4a80b8;
+  --purple: #7e5eb8;
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.02);
+  --shadow-lg: 0 4px 20px rgba(0,0,0,0.07);
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+  --font-sans: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans GB', sans-serif;
+}
+* { margin:0; padding:0; box-sizing:border-box }
+
+/* ── Body & Background ── */
+body {
+  background: url(/assets/ui_imgs/bgs/bg.jpg) center/cover fixed;
+  color: var(--text-body);
+  font: 400 14px/1.6 var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 20px 0;
+}
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background: var(--bg-overlay);
+  pointer-events: none; z-index: 0;
+}
+
+/* ── App Shell ── */
+#app {
+  position: relative; z-index: 1;
+  width: 1260px;
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 0 4px;
+}
+
+/* ── Title ── */
+.app-title {
+  text-align: center; padding: 8px 0 0;
+  font: 600 22px var(--font-sans); color: var(--text-bright);
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+/* ── Top Row ── */
+.top-row { display:flex; gap:12px; align-items:stretch }
+
+/* ── Camera Panel ── */
+.camera-panel { flex:0 0 670px; display:flex; flex-direction:column; gap:10px }
+
+.camera-wrap {
+  position:relative; width:640px; height:480px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background-color: #000;
+  background-image: url(/assets/ui_imgs/bgs/bg.jpg);
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+  border: none;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.06);
+  transition: box-shadow 0.5s ease;
+}
+/* Active camera glow */
+.camera-wrap.live {
+  box-shadow: 0 0 0 1px rgba(62,140,130,0.2), 0 2px 12px rgba(0,0,0,0.06), 0 0 30px rgba(62,140,130,0.08);
+}
+
+/* Camera off placeholder */
+.camera-placeholder {
+  position: absolute; inset: 0; z-index: 1;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 12px;
+  pointer-events: none;
+  background: rgba(0,0,0,0.4);
+  transition: opacity 0.4s ease;
+}
+.camera-placeholder.hidden { opacity: 0 }
+.camera-placeholder .ph-icon {
+  width: 60px; height: 60px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.5);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 26px; color: rgba(255,255,255,0.7);
+  animation: phPulse 2.5s ease-in-out infinite;
+  margin-top: 0;
+}
+@keyframes phPulse {
+  0%,100% { border-color: rgba(255,255,255,0.35); transform: scale(1) }
+  50% { border-color: rgba(255,255,255,0.6); transform: scale(1.05) }
+}
+.camera-placeholder .ph-text {
+  font: 500 14px var(--font-sans); color: rgba(255,255,255,0.7);
+  letter-spacing: 0.04em;
+}
+
+.camera-wrap video, .camera-wrap canvas {
+  position:absolute; top:0; left:0; width:100%; height:100%;
+  transition: opacity 0.5s ease;
+}
+.camera-wrap canvas.off { display:none }
+/* Fade in when camera becomes active */
+.camera-wrap video, .camera-wrap canvas { opacity: 0 }
+.camera-wrap.live video, .camera-wrap.live canvas { opacity: 1 }
+
+/* Scanning line */
+.camera-wrap::after {
+  content: '';
+  position: absolute; left: 0; right: 0; height: 1px; z-index: 3;
+  background: linear-gradient(90deg, transparent 0%, rgba(62,140,130,0.2) 20%, rgba(62,140,130,0.4) 50%, rgba(62,140,130,0.2) 80%, transparent 100%);
+  animation: scanLine 4s ease-in-out infinite;
+  pointer-events: none; opacity: 0;
+  transition: opacity 0.5s ease;
+}
+.camera-wrap.live::after { opacity: 0.35 }
+
+@keyframes scanLine {
+  0% { top: -1px; opacity: 0; }
+  20% { opacity: 0.5; }
+  50% { opacity: 0.2; }
+  80% { opacity: 0.5; }
+  100% { top: 100%; opacity: 0; }
+}
+
+/* FPS & WS badges */
+.fps-badge {
+  position:absolute; top:10px; left:10px; z-index:5;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(6px);
+  color: #8dd8cf; padding: 3px 10px; border-radius: 4px;
+  font: 500 12px/1.4 var(--font-mono); letter-spacing: 0.02em;
+  border: 1px solid rgba(141,216,207,0.2);
+  transition: opacity 0.4s ease;
+}
+.ws-status {
+  position:absolute; top:10px; right:10px; z-index:5;
+  padding: 3px 10px; border-radius: 4px;
+  font: 500 12px/1.4 var(--font-mono);
+  backdrop-filter: blur(6px);
+  transition: all 0.3s ease;
+}
+.ws-status.on {
+  background: rgba(74,157,90,0.3); color: #3d8a4a;
+  border: 1px solid rgba(74,157,90,0.4);
+}
+.ws-status.off {
+  background: rgba(192,80,72,0.3); color: #b04038;
+  border: 1px solid rgba(192,80,72,0.4);
+  animation: wsBlink 1.2s ease-in-out infinite;
+}
+@keyframes wsBlink {
+  0%,100% { opacity: 1 }
+  50% { opacity: 0.4 }
+}
+
+/* ── Button Bar ── */
+.btn-bar { display:flex; align-items:center; gap:5px; flex-wrap:nowrap }
+
+.btn {
+  padding: 5px 11px; border:1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  cursor:pointer; font: 500 12px var(--font-sans); letter-spacing: 0.01em;
+  transition: all 0.2s ease; white-space:nowrap;
+  background: #fff; color: var(--text-body);
+}
+.btn:hover { border-color: rgba(0,0,0,0.18); background: #f5f6fa; color: var(--text-bright); transform: translateY(-1px) }
+.btn:active { transform: scale(0.97) translateY(0) }
+
+.btn-start {
+  background: #eaf7ec; color: var(--green);
+  border-color: rgba(74,157,90,0.25);
+  min-width: 72px;
+}
+.btn-start:hover { background: #d8f0db; border-color: rgba(74,157,90,0.5); box-shadow: 0 2px 8px rgba(74,157,90,0.1) }
+.btn-start:disabled { opacity:0.35; cursor:not-allowed; filter:grayscale(0.3) }
+/* Camera loading animation */
+.btn-start-inner { display: inline-flex; align-items: center; gap: 4px }
+.btn-start-inner.loading { animation: btnLoadPulse 0.8s ease-in-out infinite }
+@keyframes btnLoadPulse {
+  0%,100% { opacity: 1 }
+  50% { opacity: 0.5 }
+}
+
+.btn-stop { background: #fceeec; color: var(--red); border-color: rgba(192,80,72,0.2) }
+.btn-stop:hover { background: #f9ddd9; border-color: rgba(192,80,72,0.45); box-shadow: 0 2px 8px rgba(192,80,72,0.1) }
+.btn-stop:disabled { opacity:0.35; cursor:not-allowed; filter:grayscale(0.3) }
+
+.btn-video { background: #ecf3fa; color: var(--blue); border-color: rgba(74,128,184,0.2) }
+.btn-video:hover { background: #dce9f5; border-color: rgba(74,128,184,0.4); box-shadow: 0 2px 8px rgba(74,128,184,0.08) }
+
+.btn-dl { background: #fff; color: var(--text-body); font: 500 12px var(--font-sans) }
+.btn-dl:disabled { opacity:0.35; cursor:not-allowed }
+.btn-dl .swap-icon { display:inline-block; transition: transform 0.35s ease }
+.btn-dl.active { background: #fdf3e7; color: var(--orange); border-color: rgba(200,125,48,0.25) }
+.btn-dl.active:hover { background: #faebd7; border-color: rgba(200,125,48,0.45) }
+.btn-dl.active .swap-icon { transform: rotate(180deg) }
+
+.btn-work { background: #fff; color: var(--text-body); font: 500 12px var(--font-sans) }
+.btn-work:disabled { opacity:0.35; cursor:not-allowed }
+.btn-work.triage { background: #fdf3e7; color: var(--orange); border-color: rgba(200,125,48,0.25) }
+.btn-work.triage:hover { background: #faebd7; border-color: rgba(200,125,48,0.45) }
+.btn-work.translate { background: #ecf8f6; color: var(--teal); border-color: rgba(62,140,130,0.2) }
+.btn-work.translate:hover { background: #ddf0ec; border-color: rgba(62,140,130,0.4) }
+
+/* Mode badge */
+.mode-badge {
+  display:inline-block; padding:3px 10px; border-radius:20px;
+  font: 600 12px var(--font-sans); letter-spacing: 0.03em;
+  border: 1px solid var(--border-subtle); white-space:nowrap;
+  background: #fff;
+  animation: badgePop 0.3s ease-out;
+}
+@keyframes badgePop {
+  0% { transform: scale(0.9); opacity: 0.5 }
+  100% { transform: scale(1); opacity: 1 }
+}
+.mode-badge.number { background: #ecf3fa; color: var(--blue); border-color: rgba(74,128,184,0.2) }
+.mode-badge.status { background: #f4f0f9; color: var(--purple); border-color: rgba(126,94,184,0.2) }
+.mode-badge.time { background: #ecf8f6; color: var(--teal); border-color: rgba(62,140,130,0.2) }
+
+.state-label { font: 500 12px var(--font-sans); white-space:nowrap; transition: color 0.4s ease }
+.info-tag { font: 500 12px var(--font-sans); color: var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:140px }
+
+/* Model select */
+.custom-select { position: relative }
+.custom-select-trigger {
+  padding-right: 22px !important; position: relative;
+  min-width: 100px; text-align: left;
+}
+.select-arrow {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  font-size: 14px; color: var(--text-dim); transition: transform 0.25s ease;
+  line-height: 1;
+}
+.custom-select.open .select-arrow { transform: translateY(-50%) rotate(180deg) }
+
+.select-dropdown {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 20;
+  background: #fff; border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm); box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  min-width: 130px; overflow: hidden;
+}
+.select-option {
+  padding: 7px 12px; cursor: pointer;
+  font: 500 12px var(--font-sans); color: var(--text-body);
+  transition: background 0.15s ease;
+}
+.select-option:hover { background: var(--bg-elevated) }
+.select-option.active { color: var(--accent-strong); background: rgba(62,140,130,0.06); font-weight: 600 }
+.select-option:not(:last-child) { border-bottom: 1px solid var(--border-dim) }
+
+/* Dropdown transition */
+.drop-enter-active { animation: dropIn 0.2s ease-out }
+.drop-leave-active { animation: dropOut 0.15s ease-in }
+@keyframes dropIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.96) }
+  to { opacity: 1; transform: translateY(0) scale(1) }
+}
+@keyframes dropOut {
+  from { opacity: 1; transform: translateY(0) scale(1) }
+  to { opacity: 0; transform: translateY(-6px) scale(0.96) }
+}
+
+/* Dropdown click-outside backdrop */
+.dropdown-backdrop {
+  position: fixed; inset: 0; z-index: 19; background: transparent;
+}
+
+/* ── API Key Bar ── */
+.api-key-bar {
+  display:flex; align-items:center; gap:6px;
+}
+.api-key-bar input {
+  flex:1; padding:5px 10px; border-radius: var(--radius-sm);
+  border:1px solid var(--border-subtle);
+  background: #fff; color: var(--text-body);
+  font: 500 12px var(--font-mono);
+  transition: border-color 0.2s; min-width:0;
+}
+.api-key-bar input:focus { outline:none; border-color: var(--accent) }
+.api-key-bar input::placeholder { color: var(--text-dim); font-style:italic }
+.api-key-btn {
+  padding:5px 12px; border-radius: var(--radius-sm); cursor:pointer;
+  font: 500 12px var(--font-sans); white-space:nowrap;
+  background: #ecf3fa; color: var(--blue);
+  border:1px solid rgba(74,128,184,0.2);
+  transition: all 0.2s ease;
+}
+.api-key-btn:hover { background: #dce9f5; border-color: rgba(74,128,184,0.4) }
+.api-key-btn:disabled { opacity:0.35; cursor:not-allowed }
+.api-key-status {
+  font: 500 12px var(--font-sans); white-space:nowrap;
+  transition: color 0.3s ease;
+}
+
+/* ── Sidebar ── */
+.sidebar { flex:1; display:flex; flex-direction:column; gap:10px; min-width:0 }
+
+/* ── Cards ── */
+.card {
+  background: var(--bg-card); border-radius: var(--radius);
+  border: 1px solid var(--border-subtle);
+  padding: 14px 16px;
+  display:flex; flex-direction:column;
+  position: relative;
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(10px);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+.card:hover { border-color: rgba(0,0,0,0.1) }
+.card h3 {
+  font: 600 11px var(--font-sans); color: var(--text-heading);
+  margin-bottom: 8px; letter-spacing: 0.06em; text-transform: uppercase;
+  flex-shrink: 0;
+  position: sticky; top: 0; z-index: 2;
+  background: #fafbfc; padding-bottom: 8px;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+/* Scrollable card body — header stays fixed, content scrolls */
+.card-scroll {
+  flex:1; overflow-y:auto; min-height:0;
+  margin: 0 -4px; padding: 0 4px;
+}
+.card-scroll::-webkit-scrollbar { width: 6px }
+.card-scroll::-webkit-scrollbar-track { background: rgba(0,0,0,0.02); border-radius: 3px }
+.card-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 3px }
+.card-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2) }
+
+/* Hand gesture cards */
+.card.hands { flex:1.8 }
+.hands-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; flex:1 }
+
+.hand-card {
+  padding: 12px; border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-dim);
+  display:flex; flex-direction:column;
+  justify-content: center;
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+.hand-card:first-child { border-left: 2px solid var(--blue) }
+.hand-card:last-child { border-left: 2px solid var(--green) }
+.hand-card .label {
+  font: 500 12px var(--font-sans); color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.hand-card .gesture {
+  font: 700 22px var(--font-sans); color: var(--text-bright);
+  letter-spacing: 0.01em;
+  animation: gesturePop 0.3s ease-out;
+}
+@keyframes gesturePop {
+  0% { transform: scale(1.08); opacity: 0.6 }
+  100% { transform: scale(1); opacity: 1 }
+}
+.hand-card .detail {
+  font: 500 12px var(--font-sans); color: var(--text-dim);
+  margin-top: 4px;
+}
+
+/* Semantic output */
+.card.semantic { flex:1.8 }
+.semantic-display {
+  font: 500 16px/1.5 var(--font-sans);
+  min-height: 28px; flex:1;
+  display:flex; align-items:center;
+  word-break: break-all;
+  transition: color 0.3s ease;
+}
+.semantic-display.processing { animation: textPulse 0.9s ease-in-out infinite }
+.semantic-fade-in { animation: fadeSlideIn 0.35s ease-out }
+@keyframes textPulse {
+  0%,100% { opacity: 1 }
+  50% { opacity: 0.3 }
+}
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(-6px) }
+  to { opacity: 1; transform: translateY(0) }
+}
+
+/* Operation log */
+.card.tokens { flex:1; max-height:140px }
+.op-line {
+  font: 500 13px/1.6 var(--font-sans);
+  padding: 1px 0;
+  animation: fadeIn 0.25s ease-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateX(-4px) }
+  to { opacity: 1; transform: translateX(0) }
+}
+
+/* Confidence */
+.card.conf { flex:0.8 }
+.conf-bar {
+  height: 3px; border-radius: 2px;
+  background: rgba(0,0,0,0.05);
+  overflow: hidden; margin: 6px 0;
+}
+.conf-fill {
+  height: 100%; border-radius: 2px;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), background 0.4s;
+}
+.conf-label {
+  font: 500 13px var(--font-sans); color: var(--text-dim);
+}
+
+/* ── Bottom Row ── */
+.bottom-row { display:flex; gap:12px; min-height:0 }
+
+/* Triage panel slide transition */
+.slide-enter-active { animation: slideIn 0.35s ease-out }
+.slide-leave-active { animation: slideOut 0.3s ease-in }
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(30px); max-width: 0 }
+  to { opacity: 1; transform: translateX(0); max-width: 600px }
+}
+@keyframes slideOut {
+  from { opacity: 1; transform: translateX(0); max-width: 600px }
+  to { opacity: 0; transform: translateX(30px); max-width: 0 }
+}
+
+/* Triage panel */
+.triage-panel { flex:1; min-height:0; max-height:280px }
+.triage-msg {
+  font: 400 12px/1.5 var(--font-sans);
+  padding: 8px 12px; border-radius: var(--radius-sm);
+  max-width: 85%; margin-bottom: 6px;
+  animation: msgIn 0.3s ease-out;
+}
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(8px) }
+  to { opacity: 1; transform: translateY(0) }
+}
+.triage-msg.patient {
+  background: var(--bg-surface); color: var(--text-body);
+  align-self: flex-end; border: 1px solid var(--border-subtle);
+}
+.triage-msg.assistant {
+  background: rgba(62,140,130,0.06); color: var(--accent-strong);
+  align-self: flex-start; border: 1px solid rgba(62,140,130,0.15);
+}
+.triage-recommend {
+  font: 600 13px var(--font-sans);
+  margin-top: 6px; padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(62,140,130,0.06);
+  color: var(--accent-strong);
+  border: 1px solid rgba(62,140,130,0.18);
+}
+.triage-empty {
+  text-align:center; color: var(--text-dim); padding:20px 0;
+  font: 400 13px var(--font-sans);
+  display:flex; align-items:center; justify-content:center;
+}
+
+/* History panel */
+.history-panel {
+  flex:1; background: var(--bg-card);
+  border-radius: var(--radius); border: 1px solid var(--border-subtle);
+  padding: 16px 20px; max-height:280px; min-height:0;
+  box-shadow: var(--shadow-card); backdrop-filter: blur(10px);
+  display:flex; flex-direction:column;
+  transition: flex 0.3s ease;
+}
+.history-panel.full { flex:2 }
+.history-panel h3 {
+  font: 600 11px var(--font-sans); color: var(--text-heading);
+  margin-bottom: 8px; letter-spacing: 0.06em; text-transform: uppercase;
+  flex-shrink: 0; position: sticky; top: 0; z-index: 2;
+  background: #fafbfc; padding-bottom: 8px;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.history-table { width:100%; border-collapse:collapse }
+.history-table th {
+  text-align:left; font: 600 12px var(--font-sans); color: var(--text-heading);
+  padding:8px 12px; border-bottom:1px solid var(--border-subtle);
+  background: var(--bg-surface); position:sticky; top:0; z-index:1;
+}
+.history-table th:first-child { width:65px }
+.history-table th:nth-child(2) { width:260px }
+.history-table td {
+  padding:10px 12px; border-bottom:1px solid var(--border-dim);
+  font: 400 12px var(--font-sans); vertical-align:top;
+  transition: background 0.2s ease;
+}
+.history-table tr { transition: background 0.2s ease }
+.history-table tr:hover { background: rgba(0,0,0,0.02) }
+.history-table tbody tr { animation: rowIn 0.3s ease-out }
+@keyframes rowIn {
+  from { opacity: 0; transform: translateY(-4px) }
+  to { opacity: 1; transform: translateY(0) }
+}
+.ht-time { color: var(--text-dim); font: 500 12px var(--font-sans); white-space:nowrap }
+.ht-raw { color: var(--text-dim); font: 500 13px var(--font-sans); word-break:break-all; line-height:1.5 }
+.ht-output { color: var(--accent-strong); font: 500 13px var(--font-sans); line-height:1.5 }
+.history-empty {
+  text-align:center; color: var(--text-dim); padding:40px;
+  font: 400 14px var(--font-sans);
+}
 </style>
 </head>
 <body>
 <div id="app">
+  <div class="app-title">基于轻量化多模态的手语实时识别系统</div>
   <div class="top-row">
+    <!-- Camera -->
     <div class="camera-panel">
-      <div class="camera-wrap">
+      <div class="camera-wrap" :class="{ live: cameraOn || videoMode }">
+        <!-- Placeholder when camera is off -->
+        <div class="camera-placeholder" :class="{ hidden: cameraOn || videoMode }">
+          <div class="ph-icon">&#x1F4F7;</div>
+          <div class="ph-text">点击下方按钮开启摄像头</div>
+        </div>
         <video ref="video" autoplay playsinline muted v-show="cameraOn && !videoMode"></video>
         <video ref="videoFile" muted playsinline v-show="videoMode" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover"></video>
         <canvas ref="canvas" v-show="cameraOn || videoMode"></canvas>
-        <div class="fps-badge">FPS:{{ fps }} | det {{ detectMs }}ms | proc {{ procMs }}ms</div>
-        <div class="ws-status" :class="wsConnected?'on':'off'">{{ wsConnected ? 'WS通' : 'WS断' }}</div>
+        <div class="fps-badge" v-show="cameraOn || videoMode">{{ fps }} FPS &middot; det {{ detectMs }}ms &middot; proc {{ procMs }}ms</div>
+        <div class="ws-status" :class="wsConnected?'on':'off'" v-show="cameraOn || videoMode">{{ wsConnected ? 'WS LIVE' : 'WS DEAD' }}</div>
       </div>
       <div class="btn-bar">
-        <button class="btn btn-start" @click="toggleCamera" :disabled="videoMode">{{ cameraOn ? '关闭摄像头' : '打开摄像头' }}</button>
-        <span class="mode-badge" :class="modeClass">{{ modeName }}</span>
-        <span class="state-label">状态: {{ recorderState }}</span>
-        <span class="btn-bar-spacer"></span>
-        <button class="btn btn-video" @click="toggleVideoMode" :style="{background: videoMode ? 'var(--warn)' : '#607D8B'}">{{ videoMode ? '退出视频' : '上传视频' }}</button>
-        <button class="btn btn-dl" @click="toggleDL" :disabled="!wsConnected" :style="{background: useDL ? '#4CAF50' : '#9E9E9E'}">{{ useDL ? 'DL' : '规则' }}</button>
-        <button class="btn btn-work" @click="toggleWorkMode" :disabled="!wsConnected" :style="{background: workMode==='triage' ? '#FF6F00' : '#5C6BC0'}">{{ workMode==='triage' ? '导诊' : '翻译' }}</button>
-        <button class="btn btn-dl" @click="swapHands" :disabled="!wsConnected" :style="{background: swapHandsOn ? '#FF9800' : '#795548'}">{{ swapHandsOn ? '右手' : '左手' }}</button>
-        <button class="btn btn-work" @click="manualEnd" :disabled="!wsConnected || recorderState!=='RECORDING'" style="background:var(--warn)">退出</button>
+        <button class="btn btn-start" @click="toggleCamera" :disabled="videoMode || cameraLoading">
+          <span class="btn-start-inner" :class="{ loading: cameraLoading }">
+            {{ cameraLoading ? '⏳' : (cameraOn ? '&#x23F9;' : '&#x25B6;') }}
+            {{ cameraLoading ? '初始化' : (cameraOn ? '关闭' : '开启') }}
+          </span>
+        </button>
+        <button class="btn btn-stop" @click="manualEnd" :disabled="!wsConnected || recorderState!=='RECORDING'">
+          &#x23F9; 结束
+        </button>
+        <button class="btn btn-video" @click="toggleVideoMode">
+          {{ videoMode ? '&#x2715; 退出' : '&#x1F4C1; 视频' }}
+        </button>
+
+        <!-- Custom model dropdown -->
+        <div class="custom-select" :class="{ open: modelDropdownOpen }">
+          <button class="btn custom-select-trigger" @click="modelDropdownOpen = !modelDropdownOpen" :disabled="!wsConnected">
+            {{ modelLabel }} <span class="select-arrow">&#x25BE;</span>
+          </button>
+          <Transition name="drop">
+            <div class="select-dropdown" v-if="modelDropdownOpen">
+              <div class="select-option" v-for="opt in modelOptions" :key="opt.value"
+                   :class="{ active: currentModel === opt.value }"
+                   @click="selectModel(opt.value)">
+                {{ opt.label }}
+              </div>
+            </div>
+          </Transition>
+        </div>
+
+        <button class="btn btn-work" @click="toggleWorkMode" :disabled="!wsConnected"
+                :class="workMode==='triage' ? 'triage' : 'translate'">
+          {{ workMode==='triage' ? '&#x1F3E5; 导诊' : '&#x1F310; 翻译' }}
+        </button>
+        <button class="btn btn-dl" @click="swapHands" :disabled="!wsConnected"
+                :class="{ active: swapHandsOn }">
+          <span class="swap-icon">&#x21C4;</span> {{ swapHandsOn ? '右手主' : '左手主' }}
+        </button>
+
+        <!-- Push remaining items to the right -->
+        <span class="btn-bar-spacer" style="margin-left:auto"></span>
+        <span class="mode-badge" :class="modeClass" :key="modeName">{{ modeName }}</span>
+        <span class="state-label" :style="{color: recorderState === 'IDLE' ? 'var(--text-dim)' : 'var(--accent-strong)'}">{{ recorderState === 'IDLE' ? '待机' : '录制中' }}</span>
+
         <input ref="fileInput" type="file" accept="video/*" style="display:none" @change="onVideoSelect" />
         <span v-if="videoMode && videoLoaded" class="info-tag">{{ videoFileName }} {{ videoProgress }}</span>
       </div>
+      <!-- Dropdown click-outside backdrop -->
+      <div class="dropdown-backdrop" v-if="modelDropdownOpen" @click="modelDropdownOpen = false"></div>
+      <!-- API Key bar -->
+      <div class="api-key-bar">
+        <input type="password" placeholder="DeepSeek API Key (sk-...)" v-model="apiKeyInput"
+               @keyup.enter="setApiKey" :disabled="apiKeyLoading" />
+        <button class="api-key-btn" @click="setApiKey" :disabled="apiKeyLoading || !apiKeyInput.trim()">
+          {{ apiKeyLoading ? '设置中...' : '设置' }}
+        </button>
+        <button class="api-key-btn" @click="clearApiKey" :disabled="apiKeyLoading" style="background:#fceeec;color:var(--red);border-color:rgba(192,80,72,0.2)">
+          {{ apiKeyLoading ? '...' : '清除' }}
+        </button>
+        <span class="api-key-status" :style="{color: apiKeyStatus==='ok' ? 'var(--green)' : apiKeyStatus==='error' ? 'var(--red)' : 'var(--text-dim)'}">
+          {{ apiKeyStatus === 'ok' ? '&#x2714; 已就绪' : apiKeyStatus === 'error' ? '&#x2718; 失败' : '' }}
+        </span>
+      </div>
     </div>
 
+    <!-- Sidebar -->
     <div class="sidebar">
-      <div class="card hands"><h3>手势识别</h3>
+      <!-- Hand Gestures -->
+      <div class="card hands"><h3>&#x1F91A; 手势识别</h3>
         <div class="hands-grid">
           <div class="hand-card" v-for="h in hands" :key="h.label">
-            <div class="label">{{ h.label }}手</div><div class="gesture">{{ h.gesture }}</div>
-            <div class="detail">手指:{{ h.finger_count }} | {{ (h.gesture_confidence*100).toFixed(0) }}%</div>
+            <div class="label">{{ h.label === 'Left' ? '左手' : '右手' }}</div>
+            <div class="gesture" :key="h.gesture">{{ h.gesture }}</div>
+            <div class="detail">&#x1F446; {{ h.finger_count }} &middot; {{ (h.gesture_confidence*100).toFixed(0) }}%</div>
           </div>
-          <div class="hand-card" v-if="hands.length<2" style="opacity:.4"><div class="label">未检测到</div><div class="gesture">—</div></div>
-        </div>
-      </div>
-      <div class="card semantic"><h3>语义输出</h3>
-        <div style="font-size:15px;min-height:24px;word-break:break-all;font-weight:600"
-             :style="{color: recorderState==='IDLE'?'var(--pri)':(semanticTokens.length?'var(--warn)':'var(--sub)')}">
-          <span v-if="semanticTokens.length">{{ semanticTokens.join(' - ') }}</span>
-          <span v-else-if="recorderState==='IDLE'">&#x1F91D; 双手张开开始录制</span>
-          <span v-else>&#x23F3; 等待手势输入...</span>
-        </div>
-      </div>
-      <div class="card tokens"><h3>操作记录</h3>
-        <div style="font-size:12px;line-height:1.8" ref="opLogEl">
-          <div v-for="(op,i) in opLog" :key="i" :style="{color: op.type==='start'?'var(--pri)':op.type==='end'?'var(--success)':op.type==='undo'?'var(--danger)':op.type==='sep'?'#607D8B':'var(--sub)'}">
-            {{ op.text }}
+          <div class="hand-card" v-if="hands.length<2" style="opacity:.35">
+            <div class="label">—</div>
+            <div class="gesture" style="color:var(--text-dim)">未检测</div>
           </div>
-          <div v-if="!opLog.length" style="color:var(--sub)">等待操作...</div>
         </div>
       </div>
-      <div class="card conf"><h3>置信度</h3>
-        <div class="conf-bar"><div class="conf-fill" :style="confStyle"></div></div>
-        <div style="font-size:11px;color:var(--sub)">轨迹稳定性 {{ confidence }}%</div>
+
+      <!-- Semantic Output -->
+      <div class="card semantic"><h3>&#x1F4AC; 语义输出</h3>
+        <div class="semantic-display"
+             :class="{ processing: recorderState==='RECORDING' && !semanticTokens.length }"
+             :style="{color: recorderState==='IDLE' ? 'var(--text-dim)' : (semanticTokens.length ? 'var(--accent-strong)' : 'var(--text-dim)')}">
+          <span v-if="semanticTokens.length" :key="semanticTokens.join()" class="semantic-fade-in">{{ semanticTokens.join(' · ') }}</span>
+          <span v-else-if="recorderState==='IDLE'">双手张开开始录制，握拳结束</span>
+          <span v-else>等待手势输入...</span>
+        </div>
+      </div>
+
+      <!-- Operation Log -->
+      <div class="card tokens"><h3>&#x1F4CB; 操作记录</h3>
+        <div class="card-scroll" ref="opLogEl">
+          <div class="op-line" v-for="(op,i) in opLog" :key="i"
+               :style="{color: op.type==='start'?'var(--teal)':op.type==='end'?'var(--accent-strong)':op.type==='undo'?'var(--red)':op.type==='sep'?'var(--blue)':'var(--text-dim)'}">
+            {{ op.type==='start' ? '&#x25B6;' : op.type==='end' ? '&#x2714;' : op.type==='undo' ? '&#x21A9;' : op.type==='sep' ? '&#x2756;' : '&#x2022;' }} {{ op.text }}
+          </div>
+          <div v-if="!opLog.length" class="op-line" style="color:var(--text-dim)">等待操作...</div>
+        </div>
+      </div>
+
+      <!-- Confidence -->
+      <div class="card conf"><h3>&#x1F4CA; 置信度</h3>
+        <div class="conf-bar"><div class="conf-fill" :style="{width:confidence+'%', background:confidence>60?'var(--green)':confidence>30?'var(--orange)':'var(--red)'}"></div></div>
+        <div class="conf-label">轨迹稳定性 {{ confidence }}%</div>
       </div>
     </div>
   </div>
 
+  <!-- Bottom Row -->
   <div class="bottom-row">
-    <div class="card triage-panel" v-if="workMode==='triage' && triageConversation.length"><h3>AI 导诊对话</h3>
-      <div class="triage-scroll" ref="triageCard">
-        <div v-for="(m,i) in triageConversation" :key="i" style="font-size:12px;margin:4px 0;padding:6px 8px;border-radius:6px"
-             :style="{background: m.role==='assistant'?'#e3f2fd':'#f5f5f5',color: m.role==='assistant'?'#1565C0':'#333'}">
-          <span style="font-weight:600">{{ m.role==='assistant' ? 'AI导诊' : '患者' }}：</span>{{ m.content }}
+    <Transition name="slide">
+      <div class="card triage-panel" v-if="workMode==='triage'"><h3>&#x1F3E5; AI 导诊对话</h3>
+        <div class="card-scroll" ref="triageCard" v-if="triageConversation.length">
+          <div class="triage-msg" v-for="(m,i) in triageConversation" :key="i"
+               :class="m.role==='assistant'?'assistant':'patient'">
+            <span style="font-weight:600;font-size:11px;letter-spacing:0.04em;opacity:0.6;display:block;margin-bottom:2px">{{ m.role==='assistant' ? 'AI 导诊' : '患者' }}</span>
+            {{ m.content }}
+          </div>
+          <div class="triage-recommend" v-if="triageRecommend">
+            &#x1F3E5; 推荐科室：{{ triageRecommend }}
+          </div>
         </div>
-        <div v-if="triageRecommend" style="font-size:13px;margin-top:6px;padding:8px;border-radius:6px;background:#e8f5e9;color:#2E7D32;font-weight:600">
-          推荐科室：{{ triageRecommend }}
+        <div class="card-scroll" ref="triageCard" v-else>
+          <div class="triage-empty">等待手势输入，系统将自动进行导诊对话...</div>
         </div>
       </div>
-    </div>
-    <div class="history-panel" :class="{full: workMode!=='triage' || !triageConversation.length}" ref="historyEl"><h3>识别历史</h3>
-      <table class="history-table" v-if="history.length"><thead><tr><th>时间</th><th>原始 Token</th><th>DeepSeek 输出</th></tr></thead>
-        <tbody><tr v-for="(h,i) in history" :key="i"><td class="ht-time">{{ h.time }}</td><td class="ht-raw">{{ h.raw }}</td><td class="ht-output">{{ h.text }}</td></tr></tbody>
-      </table>
-      <div class="history-empty" v-else>等待识别手势...</div>
+    </Transition>
+    <div class="history-panel" :class="{full: workMode!=='triage'}"><h3>&#x1F4DC; 识别历史</h3>
+      <div class="card-scroll" ref="historyEl">
+        <table class="history-table" v-if="history.length"><thead><tr><th>时间</th><th>原始 Token</th><th>输出</th></tr></thead>
+          <tbody><tr v-for="(h,i) in history" :key="i"><td class="ht-time">{{ h.time }}</td><td class="ht-raw">{{ h.raw }}</td><td class="ht-output">{{ h.text }}</td></tr></tbody>
+        </table>
+        <div class="history-empty" v-else>等待手势输入...</div>
+      </div>
     </div>
   </div>
 </div>
 
 <script>
-const { createApp, ref, computed, onUnmounted } = Vue
+const { createApp, ref, computed, onUnmounted, nextTick } = Vue
 createApp({ setup() {
   const video = ref(null), videoFile = ref(null), canvas = ref(null), fileInput = ref(null), triageCard = ref(null), opLogEl = ref(null), historyEl = ref(null)
   const cameraOn = ref(false), wsConnected = ref(false)
   const videoMode = ref(false), videoLoaded = ref(false), videoProgress = ref(''), videoFileName = ref('')
-  const useDL = ref(false), dlGesture = ref(''), dlConfidence = ref(0), swapHandsOn = ref(false)
+  const currentModel = ref('e6'), dlGesture = ref(''), dlConfidence = ref(0), swapHandsOn = ref(false)
   const rawTokens = ref([])
   const semanticTokens = ref([]), opLog = ref([])
   const workMode = ref('translate'), triageConversation = ref([]), triageRecommend = ref('')
@@ -162,14 +705,30 @@ createApp({ setup() {
   const hands = ref([])
   const recorderState = ref('IDLE'), modeName = ref('基础')
   const history = ref([])
+  // API key
+  const cameraLoading = ref(false)
+  const apiKeyInput = ref(''), apiKeyLoading = ref(false), apiKeyStatus = ref('')
   let ws = null, stream = null, loopFrame = 0, wsRecon = 0, _lastSend = 0, _lastDraw = 0
-  let _reopenDebounce = 0  // v3.2: prevent rapid open/close cycles
-  let _lastAction = null, _lastOpText = ''  // dedup opLog pushes
+  let _reopenDebounce = 0
+  let _lastAction = null, _lastOpText = ''
+
+  // Custom model dropdown
+  const modelOptions = [
+    { value: 'e6', label: 'E6 多模态' },
+    { value: 'e4', label: 'E4 多模态' },
+    { value: 'e3', label: 'E3 骨架' },
+    { value: 'rule', label: '规则 XAI' },
+  ]
+  const modelDropdownOpen = ref(false)
+  const modelLabel = computed(() => modelOptions.find(o => o.value === currentModel.value)?.label || 'E6 多模态')
+  function selectModel(value) {
+    modelDropdownOpen.value = false
+    onModelChange(value)
+  }
 
   const modeClass = computed(() => ({'数字':'number','身体部位':'body','医院操作':'hospital','病症':'symptom','程度状态':'status','时间频次':'time'}[modeName.value]||''))
-  const confStyle = computed(() => ({ width:confidence.value+'%', background:confidence.value>60?'var(--success)':confidence.value>30?'var(--warn)':'var(--danger)' }))
 
-  function scrollBottom(el) { if (el) setTimeout(() => { el.scrollTop = el.scrollHeight }, 50) }
+  function scrollBottom(el) { if (el) nextTick(() => { el.scrollTop = el.scrollHeight }) }
   function pushOp(text, type) {
     if (_lastOpText !== text) { opLog.value.push({text, type}); _lastOpText = text; if (opLog.value.length > 50) opLog.value = opLog.value.slice(-30) }
     scrollBottom(opLogEl.value)
@@ -180,14 +739,52 @@ createApp({ setup() {
     scrollBottom(historyEl.value)
   }
 
+  async function setApiKey() {
+    const key = apiKeyInput.value.trim()
+    if (!key || apiKeyLoading.value) return
+    apiKeyLoading.value = true; apiKeyStatus.value = ''
+    try {
+      const resp = await fetch('/api/set_api_key', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ api_key: key })
+      })
+      const data = await resp.json()
+      apiKeyStatus.value = data.ok ? 'ok' : 'error'
+      if (!data.ok) alert('API Key 设置失败: ' + (data.error || 'unknown'))
+      setTimeout(() => { apiKeyStatus.value = '' }, 5000)
+    } catch(e) {
+      apiKeyStatus.value = 'error'
+      alert('无法连接后端: ' + e.message)
+    } finally {
+      apiKeyLoading.value = false
+    }
+  }
+
+  async function clearApiKey() {
+    apiKeyLoading.value = true; apiKeyStatus.value = ''
+    try {
+      const resp = await fetch('/api/clear_api_key', { method: 'POST' })
+      const data = await resp.json()
+      if (data.ok) {
+        apiKeyInput.value = ''
+        apiKeyStatus.value = 'ok'
+        setTimeout(() => { apiKeyStatus.value = '' }, 3000)
+      }
+    } catch(e) {
+      apiKeyStatus.value = 'error'
+    } finally {
+      apiKeyLoading.value = false
+    }
+  }
+
   function toggleVideoMode() {
     if (videoMode.value) { stopVideo(); return }
     fileInput.value.click()
   }
-  function toggleDL() {
+  function onModelChange(model) {
     if (!ws || ws.readyState !== WebSocket.OPEN) return
-    useDL.value = !useDL.value
-    ws.send(JSON.stringify({ action: 'toggle_dl' }))
+    currentModel.value = model
+    ws.send(JSON.stringify({ action: 'set_model', model: model }))
     dlGesture.value = ''; dlConfidence.value = 0
   }
   function swapHands() {
@@ -234,17 +831,17 @@ createApp({ setup() {
 
   async function toggleCamera() {
     if (cameraOn.value) { stopCamera(); return }
-    // v3.2: Debounce rapid open/close (500ms)
-    if (Date.now() - _reopenDebounce < 500) return
+    if (Date.now() - _reopenDebounce < 500 || cameraLoading.value) return
+    cameraLoading.value = true
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video:{width:640,height:480}, audio:false })
       video.value.srcObject = stream; await video.value.play()
       cameraOn.value = true
       _lastSend = _lastDraw = 0
-      // Reuse existing WS if still connected, else create new one
       if (!ws || ws.readyState !== WebSocket.OPEN) await connectWS()
       mainLoop()
     } catch(e) { alert('摄像头失败: '+e.message); stopCamera() }
+    finally { cameraLoading.value = false }
   }
 
   function stopCamera() {
@@ -252,46 +849,39 @@ createApp({ setup() {
     cameraOn.value = false; clearTimeout(wsRecon)
     if (stream) { stream.getTracks().forEach(t=>t.stop()); stream = null }
     if (loopFrame) { cancelAnimationFrame(loopFrame); loopFrame = 0 }
-    // Keep WebSocket alive — re-opening camera resumes the same session
   }
 
   function connectWS() {
     return new Promise((resolve, reject) => {
       if (ws) { ws.close(); ws = null }
       ws = new WebSocket(`ws://${location.hostname}:8000/ws`); ws.binaryType = 'arraybuffer'
-      ws.onopen = () => { wsConnected.value = true; resolve() }
+      ws.onopen = () => { wsConnected.value = true; ws.send(JSON.stringify({action:'set_model',model:currentModel.value})); resolve() }
       ws.onclose = () => { wsConnected.value = false; if (cameraOn.value || videoMode.value) wsRecon = setTimeout(() => { connectWS().catch(() => {}) }, 2000) }
       ws.onerror = () => { reject(new Error('WS connection failed')) }
       ws.onmessage = (e) => {
         try {
           const d = JSON.parse(e.data)
-          // Mode change confirmations
-          if (d.mode_changed) { useDL.value = d.use_dl; return }
+          if (d.mode_changed) { currentModel.value = d.model || 'e6'; return }
           if (d.work_mode_changed) { workMode.value = d.work_mode; return }
-          // DeepSeek polish update (async, arrives after initial output)
+          if (d.hands_swapped) { return }
           if (d.polish) {
             semanticTokens.value = [d.polish]
-            // Update last history entry with polished text
             if (history.value.length > 0) history.value[history.value.length - 1].text = d.polish
             pushOp('DeepSeek 润色 → ' + d.polish, 'polish')
             return
           }
-          // Triage response
           if (d.triage) {
             if (d.triage_history) triageConversation.value = d.triage_history.map(h => ({role: h.role, content: h.content}))
             if (d.triage.stage === 'recommend') triageRecommend.value = d.triage.department || d.triage.message
-            // Auto-scroll to latest message
             setTimeout(() => { const el = triageCard.value; if (el) el.scrollTop = el.scrollHeight }, 50)
             return
           }
-          // Frame result
           fps.value = d.fps||0; detectMs.value = d.detect_ms||0; procMs.value = d.proc_ms||0
           hands.value = d.hands||[]; confidence.value = d.confidence||0
           recorderState.value = d.semantic?.state||'IDLE'; modeName.value = d.semantic?.mode||'基础'
-          useDL.value = d.use_dl||false
+          currentModel.value = d.model||'e6'
           dlGesture.value = d.dl_gesture||''; dlConfidence.value = d.dl_confidence||0
           const s = d.semantic; if (!s) return
-          // Dedup: only react when action changes (prevents replay from cached frames)
           if (s.action && s.action !== _lastAction) {
             if (s.action==='start') { semanticTokens.value=[]; _lastOpText=''; pushOp('开始录制', 'start'); triageRecommend.value='' }
             else if (s.action==='output') { semanticTokens.value=[s.text]; addHistory((s.raw||[]).join('-'), s.text); pushOp('结束输入 → '+s.text, 'end') }
@@ -301,38 +891,32 @@ createApp({ setup() {
           }
           if (s.action==='buffer') { semanticTokens.value=[... (s.raw||[]) ] }
           _lastAction = s.action
-          // Both fists → ending
           if (recorderState.value==='RECORDING' && hands.value.length>=2 && hands.value.every(h=>h.gesture==='Closed_Fist')) {
             pushOp('正在识别...', 'end')
           }
         } catch(ex) {}
       }
-      // Timeout after 5s
       setTimeout(() => { if (!wsConnected.value) reject(new Error('WS timeout')) }, 5000)
     })
   }
 
   const CONNS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]]
 
-  // Reusable offscreen canvas — avoid per-frame createElement (memory leak fix)
   const _sendCanvas = document.createElement('canvas'); _sendCanvas.width = 320; _sendCanvas.height = 240
   const _sendCtx = _sendCanvas.getContext('2d')
   let _sendBusy = false
 
-  // Single rAF loop: send (25fps) + draw (30fps)
   function mainLoop(ts) {
     if (!cameraOn.value && !videoMode.value) return
     loopFrame = requestAnimationFrame(mainLoop)
 
     const srcVideo = videoMode.value ? videoFile.value : video.value
 
-    // Update progress for video mode
     if (videoMode.value && srcVideo && srcVideo.duration) {
       const pct = Math.round(srcVideo.currentTime / srcVideo.duration * 100)
       videoProgress.value = pct + '%'
     }
 
-    // Send frame (25fps target) — reuse offscreen canvas, skip if previous send pending
     if (ts - _lastSend >= 40 && ws && ws.readyState === WebSocket.OPEN && !_sendBusy) {
       _lastSend = ts
       if (srcVideo && srcVideo.readyState >= 2 && !srcVideo.paused) {
@@ -345,7 +929,6 @@ createApp({ setup() {
       }
     }
 
-    // Draw landmarks (30fps target) — avoid unnecessary canvas resize
     if (ts - _lastDraw >= 33) {
       _lastDraw = ts
       const c = canvas.value; if (!c) return
@@ -354,24 +937,27 @@ createApp({ setup() {
       ctx.clearRect(0, 0, 640, 480)
       hands.value.forEach(h => {
         const lm = h.landmarks; if (!lm || !lm.length) return
-        const clr = h.label === 'Left' ? '#2196F3' : '#4CAF50'
-        ctx.strokeStyle = clr; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.beginPath()
+        const clr = h.label === 'Left' ? '#4a80b8' : '#4a9d5a'
+        ctx.strokeStyle = clr; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+        ctx.beginPath()
         CONNS.forEach(([a, b]) => { ctx.moveTo(lm[a][0] * 640, lm[a][1] * 480); ctx.lineTo(lm[b][0] * 640, lm[b][1] * 480) })
         ctx.stroke()
-        ctx.fillStyle = h.label === 'Left' ? '#1976D2' : '#388E3C'
-        lm.forEach(([x, y]) => { ctx.beginPath(); ctx.arc(x * 640, y * 480, 5, 0, 2 * Math.PI); ctx.fill() })
-        if (h.bbox && h.bbox.length === 4) { const [x1, y1, x2, y2] = h.bbox; ctx.strokeStyle = '#0f0'; ctx.lineWidth = 2; ctx.strokeRect(x1 * 2, y1 * 2, (x2 - x1) * 2, (y2 - y1) * 2) }
-        const isL = h.label === 'Left', lx = isL ? 4 : 496
-        ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(lx, 452, 140, 24)
-        ctx.fillStyle = '#fff'; ctx.font = 'bold 14px sans-serif'
-        ctx.textAlign = isL ? 'left' : 'right'; ctx.fillText((h.label || '') + ': ' + (h.gesture || ''), isL ? 10 : 630, 470)
+        ctx.fillStyle = h.label === 'Left' ? '#4a80b8' : '#4a9d5a'
+        lm.forEach(([x, y]) => { ctx.beginPath(); ctx.arc(x * 640, y * 480, 4.5, 0, 2 * Math.PI); ctx.fill() })
+        if (h.bbox && h.bbox.length === 4) { const [x1, y1, x2, y2] = h.bbox; ctx.strokeStyle = 'rgba(62,140,130,0.5)'; ctx.lineWidth = 1; ctx.setLineDash([4,4]); ctx.strokeRect(x1*2, y1*2, (x2-x1)*2, (y2-y1)*2); ctx.setLineDash([]) }
+        const isL = h.label === 'Left', lx = isL ? 6 : 498
+        ctx.fillStyle = 'rgba(0,0,0,0.55)'
+        ctx.fillRect(lx, 450, 136, 24)
+        ctx.fillStyle = '#fff'; ctx.font = '600 12px "JetBrains Mono", "Noto Sans SC", sans-serif'
+        ctx.textAlign = isL ? 'left' : 'right'
+        ctx.fillText((h.label==='Left'?'左手':'右手') + ': ' + (h.gesture||''), isL ? 14 : 628, 467)
         ctx.textAlign = 'left'
       })
     }
   }
 
   onUnmounted(() => { stopCamera(); stopVideo() })
-  return { video, videoFile, canvas, fileInput, triageCard, opLogEl, historyEl, cameraOn, wsConnected, fps, detectMs, procMs, confidence, hands, semanticTokens, opLog, recorderState, modeName, modeClass, history, confStyle, videoMode, videoLoaded, videoProgress, videoFileName, useDL, dlGesture, dlConfidence, swapHandsOn, rawTokens, workMode, triageConversation, triageRecommend, toggleCamera, toggleVideoMode, toggleDL, toggleWorkMode, swapHands, onVideoSelect, manualEnd }
+  return { video, videoFile, canvas, fileInput, triageCard, opLogEl, historyEl, cameraOn, cameraLoading, wsConnected, fps, detectMs, procMs, confidence, hands, semanticTokens, opLog, recorderState, modeName, modeClass, history, videoMode, videoLoaded, videoProgress, videoFileName, currentModel, dlGesture, dlConfidence, swapHandsOn, rawTokens, workMode, triageConversation, triageRecommend, apiKeyInput, apiKeyLoading, apiKeyStatus, modelOptions, modelDropdownOpen, modelLabel, toggleCamera, toggleVideoMode, toggleWorkMode, swapHands, onVideoSelect, onModelChange, selectModel, manualEnd, setApiKey, clearApiKey }
 }}).mount('#app')
 </script>
 </body>

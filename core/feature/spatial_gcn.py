@@ -16,14 +16,39 @@ _FUNCTIONAL_EDGES = [
     (4, 8), (8, 12), (12, 16), (16, 20),  # Fingertip connections
 ]
 
+# Hand-optimized topology (HA-GCN [9] + Cross Attentive [24]):
+#   - Fingertip-to-fingertip full mesh (captures hand "silhouette")
+#   - Intra-finger skip: MCP↔DIP (captures overall finger bend independent of PIP)
+#   - Symmetric inter-finger MCP cross-links (captures finger spread structure)
+_HAND_OPTIMIZED_EXTRA = [
+    # Fingertip full mesh (thumb→index→middle→ring→pinky)
+    (4, 8), (4, 12), (4, 16), (4, 20),
+    (8, 12), (8, 16), (8, 20),
+    (12, 16), (12, 20),
+    (16, 20),
+    # Intra-finger skip: MCP→DIP (Thumb MCP→IP already in base; IP→TIP here)
+    (2, 4), (5, 7), (9, 11), (13, 15), (17, 19),
+    # Inter-finger MCP→MCP cross-links (symmetric pairs)
+    (5, 9), (5, 13), (5, 17),
+    (9, 13), (9, 17),
+    (13, 17),
+]
+
 # Pre-compute edge index for PyTorch Geometric-style message passing
 _BONE_EDGES = _HAND_CONNECTIONS
 _ALL_EDGES = _HAND_CONNECTIONS + _FUNCTIONAL_EDGES
-_EDGE_INDEX = list(zip(*_ALL_EDGES))  # ([from_nodes], [to_nodes])
-# Make undirected
+_EDGE_INDEX = list(zip(*_ALL_EDGES))
 _EDGE_INDEX = (
     list(_EDGE_INDEX[0]) + list(_EDGE_INDEX[1]),
     list(_EDGE_INDEX[1]) + list(_EDGE_INDEX[0])
+)
+
+# Hand-optimized edge index (base + functional + optimized extra)
+_ALL_OPTIMIZED = _HAND_CONNECTIONS + _FUNCTIONAL_EDGES + _HAND_OPTIMIZED_EXTRA
+_EDGE_INDEX_OPTIMIZED = list(zip(*_ALL_OPTIMIZED))
+_EDGE_INDEX_OPTIMIZED = (
+    list(_EDGE_INDEX_OPTIMIZED[0]) + list(_EDGE_INDEX_OPTIMIZED[1]),
+    list(_EDGE_INDEX_OPTIMIZED[1]) + list(_EDGE_INDEX_OPTIMIZED[0])
 )
 
 
@@ -33,6 +58,15 @@ class HandSkeletonGraph:
     BONE_EDGES = _BONE_EDGES
     ALL_EDGES = _ALL_EDGES
     EDGE_INDEX = _EDGE_INDEX
+    EDGE_INDEX_OPTIMIZED = _EDGE_INDEX_OPTIMIZED
+
+
+def get_edge_index(optimized=True):
+    """Return (edge_from, edge_to) tensors for the specified topology."""
+    ei = HandSkeletonGraph.EDGE_INDEX_OPTIMIZED if optimized else HandSkeletonGraph.EDGE_INDEX
+    return (
+        torch.tensor(ei[0], dtype=torch.long),
+        torch.tensor(ei[1], dtype=torch.long))
 
 
 # ============================================================
@@ -82,6 +116,35 @@ def extract_hand_angles(keypoints):
     return np.array(angles, dtype=np.float32)  # [10]
 
 
+def extract_hand_angles_torch(keypoints):
+    """Extract 10 joint angles from keypoints (PyTorch, differentiable).
+
+    keypoints: [B, 21, 3]
+    Returns: [B, 10]
+    """
+    joint_list = [[3, 2, 1], [7, 6, 5], [11, 10, 9], [15, 14, 13], [19, 18, 17]]
+    angles = []
+    for a_idx, b_idx, c_idx in joint_list:
+        a = keypoints[:, a_idx, :2]
+        b = keypoints[:, b_idx, :2]
+        c = keypoints[:, c_idx, :2]
+        ba = a - b
+        bc = c - b
+        angle = torch.atan2(bc[:, 1], bc[:, 0]) - torch.atan2(ba[:, 1], ba[:, 0])
+        angle = torch.abs(torch.rad2deg(angle))
+        angle = torch.where(angle > 180.0, 360.0 - angle, angle)
+        angles.append(angle / 180.0)
+    # Finger extension ratios
+    tips = [4, 8, 12, 16, 20]
+    mcps = [2, 5, 9, 13, 17]
+    for tip_idx, mcp_idx in zip(tips, mcps):
+        tip_dist = torch.norm(keypoints[:, tip_idx] - keypoints[:, 0], dim=1)
+        mcp_dist = torch.norm(keypoints[:, mcp_idx] - keypoints[:, 0], dim=1) + 1e-6
+        ratio = torch.clamp(tip_dist / mcp_dist, max=2.0) / 2.0
+        angles.append(ratio)
+    return torch.stack(angles, dim=1)  # [B, 10]
+
+
 # ============================================================
 # PyTorch GCN model
 # ============================================================
@@ -106,15 +169,14 @@ class GraphConvLayer(nn.Module):
         nn.init.zeros_(self.bias)
 
     def forward(self, x, edge_index):
-        """x: [B, N, C], edge_index: ([E_from], [E_to])"""
+        """x: [B, N, C], edge_index: (tensor[E], tensor[E]) on same device as x"""
         B, N, _ = x.shape
-        # Simple mean aggregation
-        out = torch.zeros(B, N, self.weight.shape[1], device=x.device)
+        edge_from, edge_to = edge_index
+        out = torch.zeros(B, N, self.weight.shape[1], device=x.device, dtype=x.dtype)
         for i in range(N):
-            # Find neighbors (edges where destination == i)
-            mask = torch.tensor(edge_index[1]) == i
-            neighbors = torch.tensor(edge_index[0])[mask].long()
-            if len(neighbors) > 0:
+            mask = edge_to == i
+            neighbors = edge_from[mask]
+            if neighbors.numel() > 0:
                 neighbor_feats = x[:, neighbors, :].mean(dim=1)
                 out[:, i, :] = neighbor_feats @ self.weight + self.bias
             else:
@@ -128,14 +190,19 @@ class SpatialGCN(nn.Module):
     Input:  [B, 21, 3]  normalized keypoints
     Output: [B, 256]    spatial topology features
     Params: ~0.15M
+
+    Uses hand-optimized topology by default (HA-GCN [9] + Cross Attentive [24]):
+    fingertip mesh + intra-finger skip edges + inter-finger cross-links.
     """
 
-    def __init__(self, in_channels=3, hidden_dim=128, out_features=256):
+    def __init__(self, in_channels=3, hidden_dim=128, out_features=256,
+                 optimized_topology=True, angle_dim=64):
         super().__init__()
-        self.edge_index = (
-            list(map(int, HandSkeletonGraph.EDGE_INDEX[0])),
-            list(map(int, HandSkeletonGraph.EDGE_INDEX[1]))
-        )
+        ei = HandSkeletonGraph.EDGE_INDEX_OPTIMIZED if optimized_topology else HandSkeletonGraph.EDGE_INDEX
+        edge_from = torch.tensor(ei[0], dtype=torch.long)
+        edge_to = torch.tensor(ei[1], dtype=torch.long)
+        self.register_buffer('_edge_from', edge_from)
+        self.register_buffer('_edge_to', edge_to)
 
         self.gcn1 = GraphConvLayer(in_channels, hidden_dim)
         self.gcn2 = GraphConvLayer(hidden_dim, hidden_dim)
@@ -149,19 +216,23 @@ class SpatialGCN(nn.Module):
 
         # Angle feature encoder (10 features: 5 joint angles + 5 extension ratios)
         self.angle_encoder = nn.Sequential(
-            nn.Linear(10, 64),
+            nn.Linear(10, angle_dim),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(64, 64)
+            nn.Linear(angle_dim, angle_dim)
         )
 
         # Residual connection for angle features
         self.final_fusion = nn.Sequential(
-            nn.Linear(out_features + 64, out_features),
+            nn.Linear(out_features + angle_dim, out_features),
             nn.ReLU(),
             nn.LayerNorm(out_features)
         )
         self.dropout = nn.Dropout(0.1)
+
+    @property
+    def edge_index(self):
+        return (self._edge_from, self._edge_to)
 
     def forward(self, keypoints):
         """keypoints: [B, 21, 3] normalized coordinates."""
@@ -179,37 +250,10 @@ class SpatialGCN(nn.Module):
         pooled = x3.mean(dim=1)  # [B, hidden_dim]
         spatial_feat = self.pool_proj(pooled)  # [B, 256]
 
-        # Angle features
-        kp_np = keypoints.detach().cpu().numpy()
-        angle_feats = []
-        for b in range(B):
-            angles = extract_hand_angles(kp_np[b])
-            angle_feats.append(angles)
-        angle_tensor = torch.tensor(np.stack(angle_feats), device=keypoints.device, dtype=torch.float32)
-        angle_feat = self.angle_encoder(angle_tensor)  # [B, 64]
+        # Angle features (differentiable — pure PyTorch path)
+        angle_tensor = extract_hand_angles_torch(keypoints)  # [B, 10]
+        angle_feat = self.angle_encoder(angle_tensor)        # [B, 64]
 
         # Fusion
         fused = torch.cat([spatial_feat, angle_feat], dim=1)
         return self.final_fusion(fused)  # [B, 256]
-
-
-class AngleFeatureEncoder(nn.Module):
-    """Encodes joint angles and finger extensions as 64-dim feature."""
-
-    def __init__(self):
-        super().__init__()
-        self.mlp = nn.Sequential(
-            nn.Linear(15, 64),
-            nn.ReLU(),
-            nn.Linear(64, 64)
-        )
-
-    def forward(self, keypoints):
-        B = keypoints.shape[0]
-        kp_np = keypoints.detach().cpu().numpy()
-        features = []
-        for b in range(B):
-            angles = extract_hand_angles(kp_np[b])
-            features.append(angles)
-        feat = torch.tensor(np.stack(features), device=keypoints.device, dtype=torch.float32)
-        return self.mlp(feat)

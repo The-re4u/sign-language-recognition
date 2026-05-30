@@ -27,7 +27,7 @@ class LightweightVisualEncoder(nn.Module):
     """
 
     def __init__(self, in_channels=3, roi_size=(96, 96), out_features=512,
-                 freeze_backbone=True):
+                 freeze_backbone=True, unfreeze_blocks=0):
         super().__init__()
         self.roi_size = roi_size
         self.out_features = out_features
@@ -47,10 +47,17 @@ class LightweightVisualEncoder(nn.Module):
             )
             backbone_dim = 128
 
-        # Freeze backbone
+        # Freeze backbone (with optional partial unfreeze)
         if freeze_backbone:
             for p in self.backbone.parameters():
                 p.requires_grad = False
+            if unfreeze_blocks > 0 and HAS_TORCHVISION:
+                # Unfreeze last N feature blocks (MobileNetV3-Small has 13 layers in features)
+                features = list(self.backbone.features.children())
+                n_features = len(features)
+                for i in range(max(0, n_features - unfreeze_blocks), n_features):
+                    for p in features[i].parameters():
+                        p.requires_grad = True
 
         # Trainable projection head
         self.projection = nn.Sequential(

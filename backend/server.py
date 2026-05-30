@@ -7,7 +7,7 @@ Architecture:
 Receives frames as JPEG bytes, returns recognition results as JSON.
 Stateless per-frame design — SentenceRecorder state is maintained on the server.
 """
-import sys, os, json, time, base64, io, asyncio
+import sys, os, json, time, base64, io, asyncio, threading
 import numpy as np
 import cv2
 
@@ -31,7 +31,12 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 import uvicorn
+
+
+class SetApiKeyRequest(BaseModel):
+    api_key: str
 
 # ---- Init recognition pipeline ----
 from core.perception.hand_tracker import HandTracker, HandLandmarksWrapper
@@ -42,43 +47,112 @@ from core.semantic.sentence_recorder import SentenceRecorder
 from core.semantic.deepseek_client import DeepSeekClient
 from core.feature.kinematic_features import compute_all_kinematic_features
 
-# ---- Init DL pipeline (optional, graceful fallback) ----
+# ---- Init DL pipeline (multi-model support: E3/E4/E6) ----
 _dl_available = False
-_spatial_encoder = None
-_motion_encoder = None
-_fusion_model = None
-_onnx_recognizer = None
-_dl_buffer_left = None   # deque for left hand features
-_dl_buffer_right = None  # deque for right hand features
-_dl_hand_results = {}    # {'Left': (name, conf), 'Right': (name, conf)}
-_dl_gesture_names = {}   # idx → name mapping
+_dl_buffer_left = None
+_dl_buffer_right = None
+_dl_hand_results = {}
+_dl_buffer_lock = None
+_dl_gesture_names = {}
+_current_model = 'e6'  # 'e3' | 'e4' | 'e6' | 'rule'
+
+# E3 components (GCN + Geo, no CNN, 256-dim visual slot)
+_e3_spatial = None
+_e3_geometric = None
+_e3_fusion = None
+_e3_onnx = None
+
+# E4/E6 components (GCN + Geo + CNN + GatedFusion, 512-dim visual slot)
+# Each model loads its own extractors — E6 weights diverge from E4 due to contrastive loss
+_e4_spatial = None
+_e4_geometric = None
+_e4_visual = None
+_e4_gated = None
+_e4_fusion = None
+_e4_onnx = None
+_e6_spatial = None
+_e6_geometric = None
+_e6_visual = None
+_e6_gated = None
+_e6_fusion = None
+_e6_onnx = None
 
 try:
     import torch
     from collections import deque
-    from core.feature.spatial_gcn import SpatialGCN, normalize_keypoints, extract_hand_angles
-    from core.feature.motion_encoder import MotionEncoder, extract_motion_features
-    from core.feature.multimodal_fusion import CrossModalFusion
+    from core.feature.spatial_gcn import SpatialGCN
+    from core.feature.hand_shape_context import HandShapeContext
+    from core.feature.multimodal_fusion import CrossModalFusion, GatedFusion
     from core.feature.visual_encoder import LightweightVisualEncoder
     from core.inference.onnx_recognizer import ONNXRecognizer
 
-    _spatial_encoder = SpatialGCN()
-    _spatial_encoder.eval()
-    _motion_encoder = MotionEncoder()
-    _motion_encoder.eval()
-    _fusion_model = CrossModalFusion()
-    _fusion_model.eval()
-    _visual_encoder = LightweightVisualEncoder()
-    _visual_encoder.eval()
-    _onnx_recognizer = ONNXRecognizer()
+    # ── Load E3 checkpoint ──
+    _e3_ckpt_path = 'models/checkpoints/E3_spatial_geo/best_model.pth'
+    _e3_ckpt = torch.load(_e3_ckpt_path, map_location='cpu', weights_only=True)
+    _e3_angle_dim = 64
+    if 'spatial_model' in _e3_ckpt:
+        w = _e3_ckpt['spatial_model'].get('final_fusion.0.weight')
+        if w is not None: _e3_angle_dim = w.shape[1] - 256
+    _e3_spatial = SpatialGCN(angle_dim=_e3_angle_dim).eval()
+    _e3_spatial.load_state_dict(_e3_ckpt['spatial_model'])
+    _e3_geometric = HandShapeContext().eval()
+    _e3_geometric.load_state_dict(_e3_ckpt['geometric_model'])
+    _e3_fusion = CrossModalFusion(visual_dim=256, motion_dim=256).eval()
+    _e3_fusion.load_state_dict(_e3_ckpt['fusion_model'])
+    _e3_onnx = ONNXRecognizer('models/sign_recognizer_e3.onnx', num_classes=10)
+    print(f'[Backend] E3 loaded (GCN+Geo, {_e3_angle_dim}-dim angles)')
+
+    # ── Load E4 checkpoint ──
+    _e4_ckpt_path = 'models/checkpoints/E4_spatial_cnn_geo/best_model.pth'
+    _e4_ckpt = torch.load(_e4_ckpt_path, map_location='cpu', weights_only=True)
+    _e4_angle_dim = 64
+    if 'spatial_model' in _e4_ckpt:
+        w = _e4_ckpt['spatial_model'].get('final_fusion.0.weight')
+        if w is not None: _e4_angle_dim = w.shape[1] - 256
+    _e4_spatial = SpatialGCN(angle_dim=_e4_angle_dim).eval()
+    _e4_spatial.load_state_dict(_e4_ckpt['spatial_model'])
+    _e4_geometric = HandShapeContext().eval()
+    _e4_geometric.load_state_dict(_e4_ckpt['geometric_model'])
+    _e4_visual = LightweightVisualEncoder(freeze_backbone=True).eval()
+    _e4_visual.load_state_dict(_e4_ckpt['visual_model'])
+    _e4_gated = GatedFusion().eval()
+    _e4_gated.load_state_dict(_e4_ckpt['gated_fusion'])
+    _e4_fusion = CrossModalFusion(visual_dim=512, motion_dim=256).eval()
+    _e4_fusion.load_state_dict(_e4_ckpt['fusion_model'])
+    _e4_onnx = ONNXRecognizer('models/sign_recognizer_e4.onnx', num_classes=10)
+    print(f'[Backend] E4 loaded (GCN+Geo+CNN+GatedFusion, {_e4_angle_dim}-dim angles)')
+
+    # ── Load E6 checkpoint (own extractors: fine-tuned with contrastive loss) ──
+    _e6_ckpt_path = 'models/checkpoints/E6_semantic/best_model.pth'
+    _e6_ckpt = torch.load(_e6_ckpt_path, map_location='cpu', weights_only=True)
+    _e6_angle_dim = 64
+    if 'spatial_model' in _e6_ckpt:
+        w = _e6_ckpt['spatial_model'].get('final_fusion.0.weight')
+        if w is not None: _e6_angle_dim = w.shape[1] - 256
+    _e6_spatial = SpatialGCN(angle_dim=_e6_angle_dim).eval()
+    _e6_spatial.load_state_dict(_e6_ckpt['spatial_model'])
+    _e6_geometric = HandShapeContext().eval()
+    _e6_geometric.load_state_dict(_e6_ckpt['geometric_model'])
+    _e6_visual = LightweightVisualEncoder(freeze_backbone=True).eval()
+    _e6_visual.load_state_dict(_e6_ckpt['visual_model'])
+    _e6_gated = GatedFusion().eval()
+    _e6_gated.load_state_dict(_e6_ckpt['gated_fusion'])
+    _e6_fusion = CrossModalFusion(visual_dim=512, motion_dim=256).eval()
+    _e6_fusion.load_state_dict(_e6_ckpt['fusion_model'])
+    _e6_onnx = ONNXRecognizer('models/sign_recognizer_e6.onnx', num_classes=10)
+    print(f'[Backend] E6 loaded (GCN+Geo+CNN+GatedFusion+Semantic, {_e6_angle_dim}-dim angles)')
+
     _dl_buffer_left = deque(maxlen=32)
     _dl_buffer_right = deque(maxlen=32)
+    _dl_buffer_lock = threading.Lock()
     _dl_available = True
-    print('[Backend] DL pipeline loaded (SpatialGCN + Motion + Visual + Fusion + TCN)')
+    print('[Backend] DL pipeline loaded: multi-model (E3/E4/E6)')
 except ImportError as e:
     print(f'[Backend] DL pipeline not available (missing torch/onnx): {e}')
 except Exception as e:
     print(f'[Backend] DL pipeline init failed: {e}')
+    import traceback as _tb_init
+    _tb_init.print_exc()
 
 # Load DL gesture name mapping from training data
 try:
@@ -107,7 +181,7 @@ sentence_recorder = SentenceRecorder(
 # State
 _frame_counter = 0
 _input_skip = 2            # process every 2nd frame (25→12.5 FPS internal, 25 FPS output)
-_flow_skip = 999           # optical flow disabled — not used by rule path, expensive
+_flow_skip = 1               # optical flow enabled — used for real Farneback flow in DL
 _cached_flow = None
 _fps_estimate = 30.0
 _last_frame_time = 0
@@ -120,6 +194,8 @@ _perf_proc_sum = 0.0
 _perf_frame_count = 0
 _perf_session_start = 0.0
 _perf_snapshot = False
+_perf_dl_conf_sum = 0.0
+_perf_dl_conf_count = 0
 _kinematic_history_len = 16
 _kin_skip = 6              # kinematic features every 6 processed frames
 _sr_skip = 1               # sentence recorder on every processed frame (input_skip already gates)
@@ -127,7 +203,6 @@ _last_sr_result = None
 _last_proc_result = None   # cached full proc_result for skipped frames
 _last_hand_count = 0       # debounce flicker: track consistent hand count
 _hand_debounce_timer = 0
-_use_dl = False            # True = deep learning, False = rule-based
 _work_mode = 'translate'   # 'translate' = sign language translation, 'triage' = AI triage
 _swap_hands = False        # v3.4: False=left mode right content, True=swapped
 _triage_history = []       # conversation history for triage mode
@@ -137,96 +212,102 @@ _first_frame_after_reconnect = True  # v3.2: IMAGE mode on first frame after WS 
 print('[Backend] Pipeline ready.')
 
 
-def _extract_dl_features(curr_kp, prev_kp, hand_landmarks_wrapper=None, frame_bgr=None):
-    """Extract 256-dim fused feature vector for one frame.
-
-    Uses PyTorch SpatialGCN + MotionEncoder + VisualEncoder + CrossModalFusion.
-    Returns [256] numpy array, or None on failure.
-    """
-    if not _dl_available:
-        return None
-    try:
-        with torch.no_grad():
-            curr_t = torch.from_numpy(curr_kp).float().unsqueeze(0)  # [1, 21, 3]
-            spatial = _spatial_encoder(curr_t)                        # [1, 256]
-
-            if prev_kp is not None:
-                prev_t = torch.from_numpy(prev_kp).float()
-                kp_diff = (curr_t[:, :, :2] - prev_t[:21, :2].unsqueeze(0)).reshape(1, 42)
-                kp_delta = torch.cat([kp_diff, torch.zeros(1, 21)], dim=1)  # [1, 63]
-                flow_hist = torch.zeros(1, 128)
-            else:
-                kp_delta = torch.zeros(1, 63)
-                flow_hist = torch.zeros(1, 128)
-
-            motion = _motion_encoder(flow_hist, kp_delta)            # [1, 128]
-
-            # Visual: crop 96x96 hand ROI from frame
-            if frame_bgr is not None:
-                h, w = frame_bgr.shape[:2]
-                # Get landmark pixel coords from keypoints or wrapper
-                if hand_landmarks_wrapper is not None:
-                    xs = [int(lm.x * w) for lm in hand_landmarks_wrapper.landmark]
-                    ys = [int(lm.y * h) for lm in hand_landmarks_wrapper.landmark]
-                else:
-                    xs = [int(curr_kp[j, 0] * w) for j in range(21)]
-                    ys = [int(curr_kp[j, 1] * h) for j in range(21)]
-                pad = 25
-                x1, y1 = max(0, min(xs) - pad), max(0, min(ys) - pad)
-                x2, y2 = min(w, max(xs) + pad), min(h, max(ys) + pad)
-                if x2 > x1 and y2 > y1:
-                    roi_bgr = cv2.resize(frame_bgr[y1:y2, x1:x2], (96, 96))
-                    roi_rgb = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2RGB)
-                    roi_t = torch.from_numpy(roi_rgb).float().permute(2, 0, 1).unsqueeze(0) / 255.0
-                    visual = _visual_encoder(roi_t)  # [1, 512]
-                else:
-                    visual = torch.zeros(1, 512)
-            else:
-                visual = torch.zeros(1, 512)
-
-            fused = _fusion_model(visual, spatial, motion)           # [1, 256]
-            return fused.squeeze(0).numpy().astype(np.float32)
-    except Exception:
-        return None
-
-
 def _dl_process():
-    """Background daemon: PyTorch feature extraction + ONNX inference."""
-    import time as _t
+    """Background daemon: PyTorch feature extraction + ONNX inference.
+
+    Supports E3 (GCN+Geo), E4 (GCN+CNN+Geo+GatedFusion), E6 (E4+Semantic TCN).
+    Switches feature extractors and ONNX model based on _current_model global.
+    """
+    import time as _t, traceback as _tb
     while True:
-        _t.sleep(2.0)
-        if not _use_dl or not _dl_available:
+        _t.sleep(0.5)
+        if _current_model == 'rule' or not _dl_available:
             continue
         try:
+            # ── Select active components ──
+            is_e3 = (_current_model == 'e3')
+            is_e6 = (_current_model == 'e6')
+            if is_e3:
+                spatial, geometric = _e3_spatial, _e3_geometric
+                visual_enc, gated = None, None
+                fusion, onnx = _e3_fusion, _e3_onnx
+            elif is_e6:
+                spatial, geometric = _e6_spatial, _e6_geometric
+                visual_enc, gated = _e6_visual, _e6_gated
+                fusion, onnx = _e6_fusion, _e6_onnx
+            else:
+                spatial, geometric = _e4_spatial, _e4_geometric
+                visual_enc, gated = _e4_visual, _e4_gated
+                fusion, onnx = _e4_fusion, _e4_onnx
+
             for side, buf in [('Left', _dl_buffer_left), ('Right', _dl_buffer_right)]:
-                if len(buf) < 6:
+                if _dl_buffer_lock is None:
                     continue
-                items = list(buf)[-16:]
-                kps = np.stack([it[0] for it in items])
+                with _dl_buffer_lock:
+                    if len(buf) < 1:
+                        continue
+                    items = list(buf)[-16:]
+                    buf.clear()
+                if len(items) < 16:
+                    pad_n = 16 - len(items)
+                    items = items + [items[-1]] * pad_n
+                kps = np.stack([it['curr_kp'] for it in items])  # [T, 21, 3]
                 with torch.no_grad():
-                    kp_t = torch.from_numpy(kps).float()  # [T, 21, 3]
-                    spatial = _spatial_encoder(kp_t)
+                    kp_t = torch.from_numpy(kps).float()
                     T = kp_t.shape[0]
-                    feats = []
+
+                    # ── Skeleton: SpatialGCN ──
+                    spa_seq = spatial(kp_t)  # [T, 256]
+
+                    # ── Geometric: HandShapeContext ──
+                    geo_seq = geometric(kp_t)  # [T, 256]
+
+                    # ── Visual: MobileNetV3 CNN (E4/E6 only) ──
+                    vis_slot = None
+                    if not is_e3:
+                        roi_list = [it.get('roi_bgr') for it in items]
+                        roi_stack = []
+                        for roi_bgr in roi_list:
+                            if roi_bgr is not None:
+                                roi_rgb = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2RGB)
+                                roi_t = torch.from_numpy(roi_rgb).float().permute(2, 0, 1) / 255.0
+                                roi_stack.append(roi_t)
+                            else:
+                                roi_stack.append(torch.zeros(3, 96, 96))
+                        roi_tensor = torch.stack(roi_stack)  # [T, 3, 96, 96]
+                        cnn_seq = visual_enc(roi_tensor)     # [T, 512]
+                        vis_slot = gated(cnn_seq, geo_seq)    # [T, 512]
+                    else:
+                        vis_slot = geo_seq  # E3: geometric IS the visual slot
+
+                    # ── Motion: zero (static gesture) ──
+                    motion_seq = torch.zeros(T, 256)
+
+                    # ── CrossModalFusion ──
+                    fused_seq = []
                     for t in range(T):
-                        mo = torch.zeros(1, 128)
-                        if t > 0 and items[t][1] is not None:
-                            prev = torch.from_numpy(items[t][1]).float()
-                            kd = (kp_t[t:t+1,:,:2] - prev[:21,:2].unsqueeze(0)).reshape(1, 42)
-                            mo = _motion_encoder(torch.zeros(1, 128), torch.cat([kd, torch.zeros(1, 21)], dim=1))
-                        fu = _fusion_model(torch.zeros(1, 512), spatial[t:t+1], mo)
-                        feats.append(fu.squeeze(0).numpy().astype(np.float32))
-                if len(feats) >= 6:
-                    result = _onnx_recognizer.predict_sequence_label(np.stack(feats))
+                        f = fusion(vis_slot[t:t+1], spa_seq[t:t+1], motion_seq[t:t+1])
+                        fused_seq.append(f.squeeze(0).cpu().numpy().astype(np.float32))
+
+                if len(fused_seq) >= 1:
+                    feat_array = np.stack(fused_seq)
+                    result = onnx.predict_sequence_label(feat_array)
                     if result is not None:
                         lid, conf = result
-                        _dl_hand_results[side] = (_dl_gesture_names.get(lid, str(lid)), round(float(conf) * 100))
-                buf.clear()
+                        name = _dl_gesture_names.get(lid, str(lid))
+                        with _dl_buffer_lock:
+                            _dl_hand_results[side] = (name, round(float(conf) * 100), time.time())
+                        global _perf_dl_conf_sum, _perf_dl_conf_count
+                        _perf_dl_conf_sum += float(conf)
+                        _perf_dl_conf_count += 1
+                    else:
+                        name = '?'; conf = 0.0
+                    print(f'[DL:{_current_model.upper()}] {side}: {name} conf={float(conf):.2f}')
         except Exception:
-            pass
+            print('[DL] Background thread error:')
+            _tb.print_exc()
 
-import threading as _th
-_th.Thread(target=_dl_process, daemon=True).start()
+threading.Thread(target=_dl_process, daemon=True).start()
 
 app = FastAPI(title='Hand Sign Language API v3.1')
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'])
@@ -299,7 +380,7 @@ def _process_frame(image_bgr):
     detect_ms = (time.time() - t0) * 1000
     proc_ms = 0.0  # computed at end of pipeline
 
-    # v3.1: Optical flow only every N frames (expensive, not used by rule path)
+    # v3.1: Optical flow for hand ROI (E4/E6 benefit from it, E3 ignores)
     if _frame_counter % _flow_skip == 0:
         gray_small = cv2.cvtColor(image_rgb_small, cv2.COLOR_RGB2GRAY)
         _cached_flow = flow_estimator.compute(gray_small)
@@ -350,6 +431,42 @@ def _process_frame(image_bgr):
                 'kin_feat': kin_feat,
             })
 
+            # --- DL buffer stash (always include ROI+flow, E3 ignores them) ---
+            if _current_model != 'rule' and _dl_available and _dl_buffer_lock is not None:
+                buf = _dl_buffer_left if label == 'Left' else _dl_buffer_right
+                roi_bgr = None
+                if image_bgr is not None:
+                    h_img, w_img = image_bgr.shape[:2]
+                    xs = [int(curr_kp[j, 0] * w_img) for j in range(21)]
+                    ys = [int(curr_kp[j, 1] * h_img) for j in range(21)]
+                    pad = 25
+                    x1, y1 = max(0, min(xs) - pad), max(0, min(ys) - pad)
+                    x2, y2 = min(w_img, max(xs) + pad), min(h_img, max(ys) + pad)
+                    if x2 > x1 and y2 > y1:
+                        roi_bgr = cv2.resize(image_bgr[y1:y2, x1:x2], (96, 96))
+                flow_hist = None
+                if _cached_flow is not None:
+                    from core.feature.motion_encoder import compute_flow_histogram
+                    if x2 > x1 and y2 > y1 and _cached_flow.shape[0] > 0:
+                        fh, fw = _cached_flow.shape[:2]
+                        sx, sy = fw / w_img, fh / h_img
+                        fx1, fy1 = int(x1 * sx), int(y1 * sy)
+                        fx2, fy2 = int(x2 * sx), int(y2 * sy)
+                        fx1, fy1 = max(0, fx1), max(0, fy1)
+                        fx2, fy2 = min(fw, fx2), min(fh, fy2)
+                        if fx2 > fx1 and fy2 > fy1:
+                            flow_crop = _cached_flow[fy1:fy2, fx1:fx2]
+                            flow_hist = compute_flow_histogram(flow_crop, bins=64)
+                    else:
+                        flow_hist = np.zeros(128, dtype=np.float32)
+                with _dl_buffer_lock:
+                    buf.append({
+                        'curr_kp': curr_kp.copy(),
+                        'prev_kp': prev_kp.copy() if prev_kp is not None else None,
+                        'roi_bgr': roi_bgr,
+                        'flow_hist': flow_hist,
+                    })
+
         # Sort: Left first
         raw_hands.sort(key=lambda h: 0 if h['label'] == 'Left' else 1)
 
@@ -364,27 +481,28 @@ def _process_frame(image_bgr):
                 'stability': h['stability'],
             })
 
-    # --- DL: non-blocking via background timer ---
+    # Route DL results to semantic pipeline (all_gestures) and UI (hands)
     dl_gesture_name = None
     dl_confidence_val = 0.0
-    if _use_dl and _dl_available and result.hand_landmarks and _frame_counter % 30 == 0:
-        # Just stash raw keypoints — zero PyTorch in main thread
-        for i in range(len(result.hand_landmarks)):
-            label = result.handedness[i][0].category_name
-            curr_kp = _landmarks_to_array(HandLandmarksWrapper(result.hand_landmarks[i]))
-            prev_kp = _prev_keypoints.get(label)
-            buf = _dl_buffer_left if label == 'Left' else _dl_buffer_right
-            buf.append((curr_kp.copy(), prev_kp.copy() if prev_kp is not None else None))
+    if _current_model != 'rule' and _dl_hand_results:
+        now_ts = time.time()
+        dl_gestures = []
+        for side in ['Left', 'Right']:
+            if side in _dl_hand_results:
+                entry = _dl_hand_results[side]
+                if len(entry) >= 3 and now_ts - entry[2] < 2.0 and entry[1] >= 30:
+                    dl_gestures.append(entry[0])
+        if len(dl_gestures) > 0:
+            all_gestures = dl_gestures
 
-    # Display latest DL results in hand cards
-    if _use_dl and _dl_hand_results:
         for h in hands:
             side = h['label']
             if side in _dl_hand_results:
-                name, conf = _dl_hand_results[side]
-                h['gesture'] = name
-                h['gesture_confidence'] = conf / 100.0
-        dl_gesture_name, dl_confidence_val = list(_dl_hand_results.values())[0] if _dl_hand_results else (None, 0.0)
+                entry = _dl_hand_results[side]
+                if len(entry) >= 3 and now_ts - entry[2] < 2.0 and entry[1] >= 50:
+                    h['gesture'] = entry[0]
+                    h['gesture_confidence'] = entry[1] / 100.0
+        dl_gesture_name, dl_confidence_val = list(_dl_hand_results.values())[0][:2] if _dl_hand_results else (None, 0.0)
 
     # v3.1: Sentence recorder — only process every _sr_skip frames or on gesture change
     current_gestures = tuple(all_gestures) if all_gestures else ()
@@ -412,6 +530,8 @@ def _process_frame(image_bgr):
             _perf_frame_count = 0
             _perf_session_start = time.time()
             _perf_snapshot = False
+            global _perf_dl_conf_sum, _perf_dl_conf_count
+            _perf_dl_conf_sum = _perf_dl_conf_count = 0
         elif action == 'output':
             semantic_action = 'output'
             semantic_text = sr_result[1]
@@ -456,7 +576,9 @@ def _process_frame(image_bgr):
             'avg_detect_ms': round(_perf_detect_sum / n, 1),
             'avg_proc_ms': round(_perf_proc_sum / n, 1),
             'output': semantic_text,
-            'mode': 'DL' if _use_dl else 'Rule',
+            'mode': _current_model.upper() if _current_model != 'rule' else 'Rule',
+            'dl_avg_conf': round(_perf_dl_conf_sum / max(_perf_dl_conf_count, 1), 2),
+            'dl_conf_count': _perf_dl_conf_count,
         }
         log_path = 'data/performance_log.json'
         if _os2.path.exists(log_path):
@@ -500,7 +622,7 @@ def _process_frame(image_bgr):
         },
         'confidence': round(avg_stability * 100),
         'frame_index': _frame_counter,
-        'use_dl': _use_dl,
+        'model': _current_model,
         'dl_gesture': dl_gesture_name,
         'dl_confidence': dl_confidence_val,
     }
@@ -527,25 +649,56 @@ def _process_frame(image_bgr):
     return proc_result
 
 
-def _get_bbox(wrapper, shape):
-    h, w = shape[:2]
-    xs = [int(lm.x * w) for lm in wrapper.landmark]
-    ys = [int(lm.y * h) for lm in wrapper.landmark]
-    return [min(xs), min(ys), max(xs), max(ys)]
-
-
 # ---- API Routes ----
 
 @app.get('/api/health')
 def health():
-    return {'status': 'ok', 'version': '3.0'}
+    return {
+        'status': 'ok', 'version': '6.0',
+        'deepseek_available': deepseek_client.is_available() if deepseek_client else False,
+    }
+
+
+@app.post('/api/shutdown')
+def shutdown():
+    """Gracefully shut down the backend server."""
+    print('[Backend] Shutdown requested, exiting...')
+    import os as _os
+    _os._exit(0)
+
+
+@app.post('/api/set_api_key')
+def set_api_key(data: SetApiKeyRequest):
+    """Set or update DeepSeek API key at runtime. Key is stored in memory only."""
+    global deepseek_client, sentence_recorder
+    api_key = data.api_key.strip()
+    if not api_key:
+        return {'ok': False, 'error': 'api_key is required'}
+    if not api_key.startswith('sk-'):
+        return {'ok': False, 'error': 'invalid key format (must start with sk-)'}
+
+    from core.semantic.deepseek_client import DeepSeekClient
+    deepseek_client = DeepSeekClient(api_key=api_key)
+    sentence_recorder.deepseek = deepseek_client
+    print(f'[Backend] DeepSeek API key updated (available={deepseek_client.is_available()})')
+    return {'ok': True, 'deepseek_available': deepseek_client.is_available()}
+
+
+@app.post('/api/clear_api_key')
+def clear_api_key():
+    """Clear the DeepSeek API key from memory."""
+    global deepseek_client, sentence_recorder
+    deepseek_client = DeepSeekClient()
+    sentence_recorder.deepseek = deepseek_client
+    print('[Backend] DeepSeek API key cleared')
+    return {'ok': True, 'deepseek_available': False}
 
 
 @app.websocket('/ws')
 async def websocket_endpoint(ws: WebSocket):
     global _prev_keypoints, _kp_history, _video_timestamp_ms, _last_sr_result, _perf_snapshot
     global _last_frame_time, _first_frame_after_reconnect, _last_proc_result
-    global _use_dl, _dl_buffer_left, _dl_buffer_right, _dl_hand_results, _last_hand_count, _hand_debounce_timer
+    global _current_model, _dl_buffer_left, _dl_buffer_right, _dl_hand_results, _last_hand_count, _hand_debounce_timer
     global _work_mode, _triage_history
     await ws.accept()
     print('[WS] Client connected')
@@ -576,23 +729,23 @@ async def websocket_endpoint(ws: WebSocket):
                     cmd = json.loads(msg['text'])
                     action = cmd.get('action', '')
                     if action == 'toggle_dl':
-                        _use_dl = not _use_dl
-                        if _use_dl:
+                        # Cycle: rule → e3 → e4 → e6 → rule
+                        cycle = {'rule': 'e3', 'e3': 'e4', 'e4': 'e6', 'e6': 'rule'}
+                        _current_model = cycle.get(_current_model, 'e6')
+                        _dl_buffer_left.clear()
+                        _dl_buffer_right.clear()
+                        _dl_hand_results.clear()
+                        print(f'[WS] Model cycled to: {_current_model}')
+                        await ws.send_json({'mode_changed': True, 'model': _current_model})
+                    elif action == 'set_model':
+                        model = cmd.get('model', 'e6')
+                        if model in ('e3', 'e4', 'e6', 'rule'):
+                            _current_model = model
                             _dl_buffer_left.clear()
                             _dl_buffer_right.clear()
-                        _dl_hand_results.clear()
-                        mode_name = 'DL' if _use_dl else 'Rule'
-                        print(f'[WS] Mode switched to: {mode_name}')
-                        await ws.send_json({'mode_changed': True, 'use_dl': _use_dl})
-                    elif action == 'set_mode':
-                        mode = cmd.get('mode', 'rule')
-                        _use_dl = (mode == 'dl')
-                        if _use_dl:
-                            _dl_buffer_left.clear()
-                            _dl_buffer_right.clear()
-                        _dl_hand_results.clear()
-                        print(f'[WS] Mode set to: {mode}')
-                        await ws.send_json({'mode_changed': True, 'use_dl': _use_dl})
+                            _dl_hand_results.clear()
+                            print(f'[WS] Model set to: {_current_model}')
+                            await ws.send_json({'mode_changed': True, 'model': _current_model})
                     elif action == 'force_end':
                         if sentence_recorder.get_state() == 'RECORDING':
                             sr = sentence_recorder.force_end()
@@ -685,8 +838,7 @@ async def websocket_endpoint(ws: WebSocket):
                 hands_detected = len(proc_result.get('hands', []))
                 dms = proc_result.get('detect_ms', 0)
                 pms = proc_result.get('proc_ms', 0)
-                mode_tag = 'DL' if _use_dl else 'Rule'
-                print(f'[WS] F{frame_count}: {proc_result["fps"]:.0f}fps {hands_detected}h {dms:.0f}ms proc {pms:.0f}ms [{mode_tag}]')
+                print(f'[WS] F{frame_count}: {proc_result["fps"]:.0f}fps {hands_detected}h {dms:.0f}ms proc {pms:.0f}ms [{_current_model.upper()}]')
 
     except WebSocketDisconnect:
         print('[WS] Client disconnected')

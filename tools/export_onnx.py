@@ -45,7 +45,8 @@ def export():
 
     # Build model
     from core.temporal.slowfast_tcn import SlowFastTCN
-    model = SlowFastTCN(input_dim=256, num_classes=14)
+    num_classes = checkpoint['tcn_model']['output_proj.3.weight'].shape[0]
+    model = SlowFastTCN(input_dim=256, num_classes=num_classes)
 
     if 'tcn_model' in checkpoint:
         model.load_state_dict(checkpoint['tcn_model'])

@@ -11,10 +11,10 @@ except ImportError:
     HAS_TORCH = False
 
 
-def compute_flow_histogram(flow_field, bins=16):
+def compute_flow_histogram(flow_field, bins=64):
     """Extract 128-dim histogram from optical flow field (numpy, no torch needed).
     flow_field: [H, W, 2]
-    Returns: [128] magnitude + direction histogram
+    Returns: [128] magnitude + direction histogram (64 mag bins + 64 ang bins)
     """
     mag, ang = cv2.cartToPolar(flow_field[..., 0], flow_field[..., 1])
     mag = mag.flatten()
@@ -53,18 +53,14 @@ def extract_motion_features(prev_keypoints, curr_keypoints):
 
 
 class MotionEncoder(nn.Module):
-    """Encodes optical flow histogram + keypoint motion + kinematic features.
+    """Encodes optical flow histogram + keypoint motion features.
 
-    v2.1: Added explicit kinematic feature channel (palm speed, tip velocities,
-    coordination change, trajectory stability) — validated metrics from
-    Wagh et al. (2025) JNeuroEngRehabil.
-
-    Input:  flow_hist [B, 128], keypoint_diff [B, 63], kinematic_vec [B, 17]
+    Input:  flow_hist [B, 128], keypoint_diff [B, 63]
     Output: [B, 128] motion feature
     Params: ~0.04M
     """
 
-    def __init__(self, flow_dim=128, kp_dim=63, kin_dim=17, out_features=128):
+    def __init__(self, flow_dim=128, kp_dim=63, out_features=128):
         super().__init__()
         self.flow_encoder = nn.Sequential(
             nn.Linear(flow_dim, 96),
@@ -76,46 +72,26 @@ class MotionEncoder(nn.Module):
             nn.ReLU(),
             nn.LayerNorm(64)
         )
-        # v2.1: Kinematic feature encoder — physically meaningful priors
-        self.kin_encoder = nn.Sequential(
-            nn.Linear(kin_dim, 32),
-            nn.ReLU(),
-            nn.LayerNorm(32)
-        )
-        # Learnable fusion weights (3-way)
-        self.fusion_weight_flow = nn.Parameter(torch.tensor(0.4))
-        self.fusion_weight_kp = nn.Parameter(torch.tensor(0.3))
-        self.fusion_weight_kin = nn.Parameter(torch.tensor(0.3))
+        # Learnable fusion weights (2-way)
+        self.fusion_weight_flow = nn.Parameter(torch.tensor(0.5))
+        self.fusion_weight_kp = nn.Parameter(torch.tensor(0.5))
         self.fusion = nn.Sequential(
-            nn.Linear(96 + 64 + 32, out_features),
+            nn.Linear(96 + 64, out_features),
             nn.ReLU(),
             nn.LayerNorm(out_features)
         )
 
     def forward(self, flow_hist, keypoint_diff, kinematic_vec=None):
         """flow_hist: [B, 128], keypoint_diff: [B, 63]
-        kinematic_vec: [B, 17] or None (None → zeros, for backward compat)"""
-        B = flow_hist.shape[0]
-        device = flow_hist.device
-
+        kinematic_vec: ignored (backward compat for checkpoint loading)"""
         f_feat = self.flow_encoder(flow_hist)    # [B, 96]
         k_feat = self.kp_encoder(keypoint_diff)   # [B, 64]
 
-        if kinematic_vec is None:
-            kine_feat = torch.zeros(B, 32, device=device)
-        else:
-            kine_feat = self.kin_encoder(kinematic_vec)  # [B, 32]
-
-        # 3-way adaptive fusion with learned weights
+        # 2-way adaptive fusion with learned weights
         w = torch.softmax(torch.stack([
             self.fusion_weight_flow,
             self.fusion_weight_kp,
-            self.fusion_weight_kin
         ]), dim=0)
 
-        fused = torch.cat([
-            f_feat * w[0],
-            k_feat * w[1],
-            kine_feat * w[2]
-        ], dim=1)
+        fused = torch.cat([f_feat * w[0], k_feat * w[1]], dim=1)
         return self.fusion(fused)  # [B, 128]

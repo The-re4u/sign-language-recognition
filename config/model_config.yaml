@@ -3,7 +3,7 @@
 model:
   name: "SignLanguageRecognizer"
   version: "2.0"
-  num_classes: 14
+  num_classes: 10
 
 spatial_gcn:
   input_channels: 3
@@ -37,7 +37,7 @@ slowfast_tcn:
   fast_kernel: 3
   slow_dilations: [1, 2, 4]
   fast_dilations: [1, 1, 2, 2]
-  num_classes: 14
+  num_classes: 10
 
 training:
   batch_size: 16
@@ -63,3 +63,47 @@ perception:
   min_detection_confidence: 0.4
   min_tracking_confidence: 0.35
   num_hands: 2
+
+# ── v6.0 Experiment presets (2026-05-29) ──
+# Usage: python tools/train.py --data data/train.json --val_data data/val.json --data_dir data --epochs 50 --batch_size 16 --lr 1e-4 --augment --class_weight --no_amp --output models/checkpoints/EXPERIMENT
+experiments:
+  E1_spatial:
+    desc: "Single-modal baseline — SpatialGCN only"
+    args: "--angle_dim 128"
+    params: ~0.35M
+    expected: "82-88% in-user"
+
+  E2_spatial_cnn:
+    desc: "Task book baseline — SpatialGCN + CNN visual"
+    args: "--unfreeze_cnn 3"
+    params: ~4.4M
+    expected: "88-93% in-user"
+
+  E3_spatial_geo:
+    desc: "SpatialGCN + HandShapeContext (no CNN) — parameter-efficient champion"
+    args: "--no_cnn --geometric"
+    params: ~2.80M
+    result: "96.7% in-user, 95.6% cross-user"
+
+  E4_spatial_cnn_geo:
+    desc: "SpatialGCN + CNN + HandShapeContext with gated fusion"
+    args: "--geometric"
+    params: ~6.89M
+    result: "99.2% in-user, 94.4% cross-user"
+
+  E5_partmix:
+    desc: "E4 + SKIM Part Mixing augmentation for cross-user regularization"
+    args: "--geometric --part_mixing --part_mix_prob 0.5"
+    params: ~6.89M
+    expected: "94-97% in-user, 88-93% cross-user"
+
+  E0_full:
+    desc: "Full modality (skip — temporal features are noise for static gestures)"
+    args: "--geometric --temporal"
+    params: ~7.1M
+    status: skipped
+
+  GCAR_baseline:
+    desc: "GCAR baseline (train_baseline.py)"
+    params: ~0.36M
+    expected: "88-93% in-user"

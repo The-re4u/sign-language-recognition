@@ -16,9 +16,12 @@ import torch.nn as nn
 class CrossModalFusion(nn.Module):
     """Transformer-based cross-modal fusion with learned modality embeddings.
 
-    Input:  visual [B, 512], spatial [B, 256], motion [B, 128]
+    Input:  visual [B, visual_dim], spatial [B, 256], motion [B, 128]
     Output: fused [B, 256]
     Params: ~0.8M
+
+    visual_dim is configurable: 512 for CNN (MobileNetV3), 256 for
+    HandShapeContext geometric descriptors.
     """
 
     def __init__(self, visual_dim=512, spatial_dim=256, motion_dim=128,
@@ -81,3 +84,39 @@ class CrossModalFusion(nn.Module):
         pooled = fused.mean(dim=1)                 # [B, 256]
 
         return self.output_proj(pooled)            # [B, 256]
+
+
+class GatedFusion(nn.Module):
+    """Gated CNN↔geometric fusion for visual slot — fixes E4 additive fusion failure.
+
+    Replaces:  vis_slot = cnn + Linear(geo, 256→512)  (additive — destroys semantics)
+    With:      gate = σ(MLP([cnn; geo_proj]))
+               vis_slot = gate * cnn + (1-gate) * geo_proj
+
+    Each of the 512 dimensions independently decides whether to trust CNN or
+    geometric features. Resolves the core E4 failure: incompatible feature
+    spaces being forced together with element-wise addition.
+
+    Params: ~0.4M (geo_proj 131K + gate MLP 262K)
+    """
+
+    def __init__(self, geo_dim=256, cnn_dim=512, fused_dim=512, dropout=0.1):
+        super().__init__()
+        self.geo_proj = nn.Sequential(
+            nn.Linear(geo_dim, cnn_dim),
+            nn.LayerNorm(cnn_dim),
+        )
+        self.gate = nn.Sequential(
+            nn.Linear(cnn_dim * 2, cnn_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(cnn_dim, cnn_dim),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, cnn_feat, geo_feat):
+        """cnn_feat: [N, 512], geo_feat: [N, 256] → [N, 512]"""
+        geo_proj = self.geo_proj(geo_feat)       # [N, 512]
+        gate_in = torch.cat([cnn_feat, geo_proj], dim=-1)  # [N, 1024]
+        gate = self.gate(gate_in)                 # [N, 512], each dim ∈ (0,1)
+        return gate * cnn_feat + (1 - gate) * geo_proj

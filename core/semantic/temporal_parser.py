@@ -32,7 +32,6 @@ class TemporalSemanticParser:
         default_paths = [
             path,
             os.path.join(os.path.dirname(__file__), '..', '..', path),
-            os.path.join('E:', 'gestureRecognition', path)
         ]
         for p in default_paths:
             try:
